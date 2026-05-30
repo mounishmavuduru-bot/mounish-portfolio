@@ -37,35 +37,31 @@ export default function IntroScreen({ onEnter }: { onEnter: () => void }) {
         OR · 04 / STATUS: STERILE
       </div>
 
-      <div className="text-center px-6 flex flex-col items-center gap-6">
-        <div className="liquid-glass px-10 py-7 md:px-14 md:py-9">
-          <h1 className="font-display text-5xl md:text-7xl lg:text-8xl font-light tracking-tight text-[var(--bone)]">
-            {typed}
-            <span className="caret align-middle h-[0.9em]" />
-          </h1>
-        </div>
+      <div className="text-center px-6 flex flex-col items-center gap-8">
+        <h1 className="font-display text-5xl md:text-7xl lg:text-8xl font-light tracking-tight text-[var(--bone)]">
+          {typed}
+          <span className="caret align-middle h-[0.9em]" />
+        </h1>
 
-        <div
-          className={`liquid-glass liquid-glass-sm transition-opacity duration-700 ${
-            showSub ? "opacity-90" : "opacity-0"
+        <p
+          className={`hud-text transition-opacity duration-700 ${
+            showSub ? "opacity-80" : "opacity-0"
           }`}
         >
-          <p className="hud-text">{SUBLINE}</p>
-        </div>
+          {SUBLINE}
+        </p>
 
         <div
-          className={`transition-opacity duration-700 flex flex-col items-center gap-3 ${
+          className={`transition-opacity duration-700 flex flex-col items-center gap-4 ${
             showBtn ? "opacity-100" : "opacity-0 pointer-events-none"
           }`}
         >
           <button onClick={handleDrape} className="btn-drape">
             Drape Up
           </button>
-          <div className="liquid-glass liquid-glass-sm">
-            <p className="hud-text opacity-70 text-[0.62rem]">
-              CLICK TO ENTER OR
-            </p>
-          </div>
+          <p className="hud-text opacity-50 text-[0.62rem]">
+            CLICK TO ENTER OR
+          </p>
         </div>
       </div>
 
