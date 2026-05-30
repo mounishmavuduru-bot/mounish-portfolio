@@ -18,7 +18,7 @@ import {
   EMAIL,
 } from "@/data/content";
 
-const HEART_TARGET_HEIGHT = 5.75;
+const HEART_TARGET_HEIGHT = 9.2;
 const CAMERA_MARGIN = 1.05;
 
 // Anchor targets in STL-local space (after recenter + scale to longest axis = HEART_TARGET_HEIGHT).
@@ -308,18 +308,31 @@ export default function OperatingRoom() {
   return (
     <div className="fixed inset-0 z-10">
       <SurgicalDrape />
-      <div className="absolute top-6 left-6 z-30 liquid-glass liquid-glass-sm hud-text opacity-90">
+      <div
+        className="absolute top-6 left-6 z-30 liquid-glass opacity-95"
+        style={{
+          padding: "18px 26px",
+          fontFamily: "var(--font-mono), monospace",
+          fontSize: "1rem",
+          letterSpacing: "0.26em",
+          textTransform: "uppercase",
+          color: "color-mix(in oklab, var(--od-blue) 75%, white)",
+        }}
+      >
         <span className="text-[var(--od-blue)]">●</span> OR · 04 LIVE
       </div>
 
-      <div className="absolute top-6 right-6 z-30 liquid-glass liquid-glass-md text-right max-w-[320px] font-mono text-[var(--bone)]">
-        <div className="text-[0.66rem] tracking-[0.22em] uppercase opacity-60 mb-2.5">
+      <div
+        className="absolute top-6 right-6 z-30 liquid-glass text-right max-w-[460px] font-mono text-[var(--bone)]"
+        style={{ padding: "22px 28px" }}
+      >
+        <div className="text-[0.95rem] tracking-[0.22em] uppercase opacity-65 mb-3.5">
           PATIENT · MOUNISH MAVUDURU
         </div>
-        <div className="text-[0.72rem] leading-snug opacity-85 tracking-[0.02em] mb-2.5">
+        <div className="text-[1.05rem] leading-snug opacity-85 tracking-[0.02em] mb-3.5">
           {TAGLINE}
         </div>
-        <div className="flex items-center justify-end gap-2.5 text-[0.7rem] tracking-[0.02em] opacity-75">
+        <div className="flex items-center justify-end gap-3 text-[1rem] tracking-[0.02em] opacity-80">
           <a
             href={GITHUB}
             target="_blank"
@@ -347,10 +360,31 @@ export default function OperatingRoom() {
         </div>
       </div>
 
-      <div className="absolute bottom-6 left-6 z-30 liquid-glass liquid-glass-sm hud-text opacity-90">
+      <div
+        className="absolute bottom-6 left-6 z-30 liquid-glass opacity-95"
+        style={{
+          padding: "18px 26px",
+          fontFamily: "var(--font-mono), monospace",
+          fontSize: "1rem",
+          letterSpacing: "0.26em",
+          textTransform: "uppercase",
+          color: "color-mix(in oklab, var(--od-blue) 75%, white)",
+        }}
+      >
         DRAG TO ROTATE · 3 SITES MARKED
       </div>
-      <div className="absolute bottom-6 right-6 z-30 liquid-glass liquid-glass-sm hud-text opacity-90 text-right">
+      <div
+        className="absolute bottom-6 right-6 z-30 liquid-glass opacity-95 text-right"
+        style={{
+          padding: "18px 26px",
+          fontFamily: "var(--font-mono), monospace",
+          fontSize: "1rem",
+          letterSpacing: "0.26em",
+          textTransform: "uppercase",
+          color: "color-mix(in oklab, var(--od-blue) 75%, white)",
+          lineHeight: 1.5,
+        }}
+      >
         SCALPEL · #10 BLADE
         <br />
         <span className="opacity-70">CLICK A SITE TO INCISE</span>

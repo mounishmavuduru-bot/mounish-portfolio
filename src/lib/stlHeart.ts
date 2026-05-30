@@ -17,7 +17,7 @@ export interface HeartCloud {
 export async function loadHeartCloud(
   url: string,
   count = 22000,
-  targetHeight = 5.75,
+  targetHeight = 9.2,
 ): Promise<HeartCloud> {
   const res = await fetch(url);
   const buf = await res.arrayBuffer();
