@@ -95,8 +95,8 @@ export default function Heart({
       uTime: { value: 0 },
       uMouse: { value: new THREE.Vector3(0, 0, 100) },
       uMouseActive: { value: 0 },
-      uRepelRadius: { value: 0.5 },
-      uRepelStrength: { value: 0.14 },
+      uRepelRadius: { value: 0.75 },
+      uRepelStrength: { value: 0.34 },
       uPixelRatio: {
         value:
           typeof window !== "undefined"

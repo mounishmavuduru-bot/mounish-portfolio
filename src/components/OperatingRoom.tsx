@@ -18,7 +18,7 @@ import {
   EMAIL,
 } from "@/data/content";
 
-const HEART_TARGET_HEIGHT = 2.55;
+const HEART_TARGET_HEIGHT = 3.11;
 const CAMERA_MARGIN = 1.05;
 
 // Anchor targets in STL-local space (after recenter + scale to longest axis = HEART_TARGET_HEIGHT).
@@ -163,7 +163,8 @@ function CameraFit() {
     const horizontalFov = 2 * Math.atan(Math.tan(fovRad / 2) * aspect);
     const distForWidth = heartWidth / (2 * Math.tan(horizontalFov / 2));
     const target = Math.max(distForHeight, distForWidth) * CAMERA_MARGIN;
-    camera.position.set(0, 0, target);
+    // start at anterior view (camera on +X axis, looking at heart center)
+    camera.position.set(target, 0, 0);
     camera.updateProjectionMatrix();
   }, [camera, size]);
   return null;
@@ -369,6 +370,8 @@ export default function OperatingRoom() {
             enableDamping
             dampingFactor={0.08}
             rotateSpeed={0.85}
+            autoRotate
+            autoRotateSpeed={0.6}
             minPolarAngle={Math.PI * 0.18}
             maxPolarAngle={Math.PI * 0.82}
           />
