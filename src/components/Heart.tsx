@@ -1,99 +1,201 @@
+/* eslint-disable react-hooks/immutability -- R3F mutates three.js objects in useFrame; standard pattern */
 "use client";
 
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { buildHeartCloud, REGION_COUNT } from "@/lib/anatomicalHeart";
 
-/**
- * Procedural stylized anatomical-ish heart.
- * Built by deforming a high-poly sphere with two ventricle bulges,
- * a cleft between them, an apex taper, and organic noise.
- */
-function buildHeartGeometry(): THREE.BufferGeometry {
-  const geo = new THREE.SphereGeometry(1, 96, 96);
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  const v = new THREE.Vector3();
+interface HeartState {
+  mouseWorld: THREE.Vector3;
+  mouseActive: number;
+  bpm: number;
+}
 
-  for (let i = 0; i < pos.count; i++) {
-    v.fromBufferAttribute(pos, i);
-    const { x, y, z } = v;
+const VERT = /* glsl */ `
+attribute vec3 aNormal;
+attribute float aRegion;
+attribute float aSeed;
 
-    // base shape: wider on top, taper to apex at bottom
-    const topness = (y + 1) * 0.5;
-    const taper = THREE.MathUtils.lerp(0.35, 1.05, Math.pow(topness, 1.4));
+uniform float uTime;
+uniform float uBeat;
+uniform vec3 uMouse;
+uniform float uMouseActive;
+uniform float uRepelRadius;
+uniform float uRepelStrength;
+uniform float uRegionGlow[${REGION_COUNT}];
+uniform float uPixelRatio;
+uniform float uBaseSize;
 
-    // asymmetric ventricle bulge (right slightly larger)
-    const ventricle =
-      0.18 * Math.exp(-Math.pow((x - 0.45) / 0.55, 2)) +
-      0.22 * Math.exp(-Math.pow((x + 0.42) / 0.55, 2));
+varying float vRegion;
+varying float vGlow;
+varying float vBeat;
 
-    // cleft between ventricles (depression near x=0 on front)
-    const cleftMask =
-      Math.exp(-Math.pow(x / 0.18, 2)) * Math.max(0, z) * (0.5 + 0.5 * topness);
-    const cleft = -0.16 * cleftMask;
+void main() {
+  vec3 pos = position * uBeat;
 
-    // atrium bump on top-back
-    const atrium = 0.14 * Math.exp(-Math.pow((y - 0.8) / 0.35, 2)) * Math.max(0, -z);
+  // mouse repulsion (in world/local — heart is centered, so position works)
+  vec3 toMouse = pos - uMouse;
+  float dist = length(toMouse);
+  float falloff = 1.0 - smoothstep(0.0, uRepelRadius, dist);
+  float repel = falloff * uRepelStrength * uMouseActive;
+  pos += normalize(toMouse + vec3(0.0001)) * repel;
 
-    // organic noise
-    const n =
-      0.04 * Math.sin(5.1 * x + 1.3) * Math.sin(4.7 * y + 0.4) +
-      0.03 * Math.sin(6.3 * z - 0.7) * Math.cos(3.9 * y + 1.1);
+  // tiny organic shimmer
+  float shimmer = 0.006 * sin(uTime * 1.8 + aSeed * 13.0);
+  pos += aNormal * shimmer;
 
-    const r = taper * (1 + ventricle + cleft + atrium + n);
-    v.set(x, y, z).normalize().multiplyScalar(r);
+  int region = int(aRegion + 0.5);
+  float glow = uRegionGlow[0];
+  if (region == 1) glow = uRegionGlow[1];
+  else if (region == 2) glow = uRegionGlow[2];
+  else if (region == 3) glow = uRegionGlow[3];
+  else if (region == 4) glow = uRegionGlow[4];
+  else if (region == 5) glow = uRegionGlow[5];
 
-    // slight forward tilt + lateral lean
-    v.applyAxisAngle(new THREE.Vector3(1, 0, 0), -0.18);
-    v.applyAxisAngle(new THREE.Vector3(0, 0, 1), 0.08);
+  vRegion = aRegion;
+  vGlow = glow + falloff * 0.5;
+  vBeat = uBeat;
 
-    pos.setXYZ(i, v.x, v.y, v.z);
+  vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+  gl_Position = projectionMatrix * mv;
+
+  float dShade = clamp(-mv.z * 0.18, 0.5, 1.6);
+  gl_PointSize = uBaseSize * uPixelRatio * dShade * (1.0 + glow * 0.7 + (uBeat - 1.0) * 4.0);
+}
+`;
+
+const FRAG = /* glsl */ `
+precision highp float;
+
+varying float vRegion;
+varying float vGlow;
+varying float vBeat;
+
+void main() {
+  vec2 c = gl_PointCoord - vec2(0.5);
+  float r = length(c);
+  if (r > 0.5) discard;
+
+  // soft circular falloff
+  float alpha = smoothstep(0.5, 0.1, r);
+
+  // base red — slightly different hue per region
+  vec3 baseRed = vec3(0.78, 0.10, 0.13);
+  vec3 hotRed  = vec3(1.0, 0.55, 0.45);
+  vec3 vesselRed = vec3(0.86, 0.18, 0.18);
+
+  vec3 color = baseRed;
+  if (vRegion > 3.5) color = vesselRed; // aorta, vessels brighter
+
+  // glow + beat color shift
+  float boost = clamp(vGlow + (vBeat - 1.0) * 6.0, 0.0, 1.4);
+  color = mix(color, hotRed, clamp(boost, 0.0, 0.9));
+
+  // center hot spot
+  color = mix(color, hotRed, smoothstep(0.5, 0.0, r) * 0.25);
+
+  gl_FragColor = vec4(color, alpha * 0.95);
+}
+`;
+
+function cardiacBeat(t: number): number {
+  // t in [0,1] one full cycle
+  let r = 1.0;
+  if (t < 0.08) {
+    r -= 0.025 * Math.sin((t / 0.08) * Math.PI);
+  } else if (t < 0.35) {
+    const p = (t - 0.08) / 0.27;
+    r += 0.085 * Math.sin(p * Math.PI);
+  } else if (t < 0.5) {
+    const p = (t - 0.35) / 0.15;
+    r -= 0.045 * Math.sin(p * Math.PI);
   }
-
-  pos.needsUpdate = true;
-  geo.computeVertexNormals();
-  geo.computeBoundingSphere();
-  return geo;
+  return r;
 }
 
 export default function Heart({
-  mouse,
+  state,
   paused,
 }: {
-  mouse: React.RefObject<{ x: number; y: number }>;
+  state: React.RefObject<HeartState>;
   paused: boolean;
 }) {
-  const ref = useRef<THREE.Mesh>(null);
-  const geometry = useMemo(() => buildHeartGeometry(), []);
+  const ref = useRef<THREE.Points>(null);
+  const cloud = useMemo(() => buildHeartCloud(6000), []);
+  const cyclePhase = useRef(0);
+
+  const uniforms = useMemo(
+    () => ({
+      uTime: { value: 0 },
+      uBeat: { value: 1 },
+      uMouse: { value: new THREE.Vector3(0, 0, 100) },
+      uMouseActive: { value: 0 },
+      uRepelRadius: { value: 0.45 },
+      uRepelStrength: { value: 0.12 },
+      uRegionGlow: { value: new Array(REGION_COUNT).fill(0) },
+      uPixelRatio: {
+        value:
+          typeof window !== "undefined"
+            ? Math.min(window.devicePixelRatio, 2)
+            : 1,
+      },
+      uBaseSize: { value: 4.6 },
+    }),
+    [],
+  );
 
   useFrame((_, dt) => {
     const m = ref.current;
     if (!m) return;
-    if (paused) return;
+    const s = state.current;
+    if (!s) return;
+
     // auto-rotate
-    m.rotation.y += dt * 0.18;
-    // mouse-driven tilt (subtle)
-    const target = mouse.current;
-    if (target) {
-      m.rotation.x = THREE.MathUtils.lerp(m.rotation.x, target.y * 0.25, 0.05);
-      m.rotation.z = THREE.MathUtils.lerp(m.rotation.z, -target.x * 0.18, 0.05);
+    if (!paused) {
+      m.rotation.y += dt * 0.16;
+    }
+
+    // beat phase advances at BPM
+    const bps = s.bpm / 60;
+    cyclePhase.current = (cyclePhase.current + dt * bps) % 1;
+    const beat = cardiacBeat(cyclePhase.current);
+    uniforms.uBeat.value = beat;
+
+    uniforms.uTime.value += dt;
+
+    // mouse uniform — transform world-space mouse into local heart space
+    const localMouse = s.mouseWorld.clone();
+    m.worldToLocal(localMouse);
+    uniforms.uMouse.value.copy(localMouse);
+    uniforms.uMouseActive.value = s.mouseActive;
+
+    // region glow based on mouse proximity to each region centroid (in local)
+    const glow = uniforms.uRegionGlow.value as number[];
+    for (let i = 0; i < REGION_COUNT; i++) {
+      const c = cloud.regionCentroids[i];
+      const d = localMouse.distanceTo(c);
+      const proxim = THREE.MathUtils.smoothstep(d, 0.6, 0.1);
+      glow[i] = THREE.MathUtils.lerp(glow[i], proxim * 0.9, 0.12);
     }
   });
 
   return (
-    <mesh ref={ref} geometry={geometry} castShadow receiveShadow>
-      <meshPhysicalMaterial
-        color="#7a1a1f"
-        roughness={0.55}
-        metalness={0.05}
-        clearcoat={0.35}
-        clearcoatRoughness={0.55}
-        sheen={0.4}
-        sheenColor="#ff5b5b"
-        sheenRoughness={0.6}
-        emissive="#3a0608"
-        emissiveIntensity={0.18}
+    <points ref={ref} geometry={cloud.geometry}>
+      <shaderMaterial
+        args={[
+          {
+            uniforms,
+            vertexShader: VERT,
+            fragmentShader: FRAG,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+          },
+        ]}
       />
-    </mesh>
+    </points>
   );
 }
+
+export type { HeartState };

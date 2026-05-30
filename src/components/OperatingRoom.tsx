@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/immutability -- R3F mutates three.js camera/objects directly */
 "use client";
 
 import { Suspense, useEffect, useRef, useState } from "react";
@@ -5,25 +6,23 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import gsap from "gsap";
-import Heart from "./Heart";
+import Heart, { HeartState } from "./Heart";
 import OperativeField from "./OperativeField";
 import { Site, siteLabels } from "@/data/content";
 
-const SITES: { id: Site; pos: [number, number, number]; label: string }[] = [
-  { id: "projects", pos: [0.55, 0.35, 0.95], label: siteLabels.projects },
-  { id: "achievements", pos: [-0.65, 0.45, 0.85], label: siteLabels.achievements },
-  { id: "positions", pos: [0.05, -0.45, 1.05], label: siteLabels.positions },
+const SITES: { id: Site; pos: [number, number, number] }[] = [
+  { id: "projects", pos: [0.6, 0.15, 0.95] },
+  { id: "achievements", pos: [-0.7, 0.55, 0.5] },
+  { id: "positions", pos: [0.15, -0.55, 0.9] },
 ];
 
 function Marker({
   id,
   position,
-  label,
   onSelect,
 }: {
   id: Site;
   position: [number, number, number];
-  label: string;
   onSelect: (id: Site, worldPos: THREE.Vector3) => void;
 }) {
   const [hover, setHover] = useState(false);
@@ -35,7 +34,6 @@ function Marker({
         onPointerOver={(e) => {
           e.stopPropagation();
           setHover(true);
-          document.body.style.cursor = "none";
         }}
         onPointerOut={() => setHover(false)}
         onClick={(e) => {
@@ -47,45 +45,54 @@ function Marker({
           }
         }}
       >
-        <sphereGeometry args={[0.04, 16, 16]} />
-        <meshBasicMaterial
-          color={hover ? "#9ee6ee" : "#6fb8c0"}
-          transparent
-          opacity={0.0}
-        />
+        <sphereGeometry args={[0.09, 16, 16]} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0} />
       </mesh>
-      <Html center distanceFactor={5} zIndexRange={[10, 0]}>
+      <Html center distanceFactor={4.5} zIndexRange={[20, 0]}>
         <div
-          className={`relative pointer-events-none select-none`}
-          style={{ transform: "translate(-50%, -50%)" }}
+          className="pointer-events-none select-none flex items-center gap-3"
+          style={{
+            transform: hover ? "translateX(8px)" : "translateX(0)",
+            transition: "transform 280ms cubic-bezier(.16,.84,.32,1)",
+          }}
         >
-          <div
-            className={`w-10 h-10 rounded-full border ${
-              hover
-                ? "border-[var(--od-blue-hot)] marker-pulse-fast"
-                : "border-[var(--od-blue)] marker-pulse"
-            }`}
-            style={{
-              boxShadow: hover
-                ? "0 0 18px rgba(158, 230, 238, 0.85), inset 0 0 8px rgba(158, 230, 238, 0.4)"
-                : "0 0 10px rgba(111, 184, 192, 0.45)",
-            }}
-          />
-          <div
-            className="absolute inset-0 flex items-center justify-center"
-            style={{ color: hover ? "#cdf2f6" : "#9ec9cd" }}
-          >
-            <div className="w-[3px] h-[3px] rounded-full bg-current shadow-[0_0_6px_currentColor]" />
+          <div className="relative">
+            <div
+              className={`rounded-full border transition-all duration-300 ${
+                hover
+                  ? "border-[#9ee6ee] w-7 h-7 marker-pulse-fast"
+                  : "border-[#6fb8c0] w-4 h-4 marker-pulse"
+              }`}
+              style={{
+                boxShadow: hover
+                  ? "0 0 22px rgba(158,230,238,0.9), inset 0 0 8px rgba(158,230,238,0.5)"
+                  : "0 0 8px rgba(111,184,192,0.5)",
+              }}
+            />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div
+                className={`rounded-full transition-all duration-300 ${
+                  hover ? "w-1 h-1 bg-[#cdf2f6]" : "w-[2px] h-[2px] bg-[#9ec9cd]"
+                }`}
+                style={{
+                  boxShadow: hover ? "0 0 6px #cdf2f6" : "0 0 3px #9ec9cd",
+                }}
+              />
+            </div>
           </div>
           <div
-            className="absolute left-1/2 top-full mt-2 -translate-x-1/2 hud-text whitespace-nowrap"
+            className="hud-text whitespace-nowrap overflow-hidden"
             style={{
-              color: hover ? "#cdf2f6" : "rgba(206,232,236,0.65)",
-              fontSize: "0.6rem",
-              letterSpacing: "0.3em",
+              maxWidth: hover ? "200px" : "0",
+              opacity: hover ? 1 : 0,
+              color: "#cdf2f6",
+              fontSize: "0.62rem",
+              letterSpacing: "0.32em",
+              transition:
+                "max-width 320ms cubic-bezier(.16,.84,.32,1), opacity 220ms ease",
             }}
           >
-            ▸ {label}
+            ▸ {siteLabels[id]}
           </div>
         </div>
       </Html>
@@ -93,48 +100,76 @@ function Marker({
   );
 }
 
+function CameraFit() {
+  const { camera, size } = useThree();
+  useEffect(() => {
+    const persp = camera as THREE.PerspectiveCamera;
+    // fit heart (~1.6 tall, ~1.4 wide after scale) with 24% margin
+    const aspect = size.width / size.height;
+    const heartHeight = 1.7;
+    const heartWidth = 1.4;
+    const fovRad = (persp.fov * Math.PI) / 180;
+    const distForHeight = heartHeight / (2 * Math.tan(fovRad / 2));
+    const horizontalFov = 2 * Math.atan(Math.tan(fovRad / 2) * aspect);
+    const distForWidth = heartWidth / (2 * Math.tan(horizontalFov / 2));
+    const target = Math.max(distForHeight, distForWidth) * 1.35;
+    camera.position.z = target;
+    camera.updateProjectionMatrix();
+  }, [camera, size]);
+  return null;
+}
+
 function SceneInner({
   onSelect,
-  mouseRef,
+  heartStateRef,
   paused,
 }: {
   onSelect: (id: Site, worldPos: THREE.Vector3) => void;
-  mouseRef: React.RefObject<{ x: number; y: number }>;
+  heartStateRef: React.RefObject<HeartState>;
   paused: boolean;
 }) {
-  const { camera } = useThree();
+  const { camera, mouse } = useThree();
+  const planeNormal = useRef(new THREE.Vector3(0, 0, 1));
+  const tmpPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0));
+  const tmpRay = useRef(new THREE.Raycaster());
+  const tmpMouseWorld = useRef(new THREE.Vector3());
+
   useFrame(() => {
-    // very subtle parallax (camera lookAt origin)
     camera.lookAt(0, 0, 0);
+    // unproject mouse to plane z=0
+    tmpRay.current.setFromCamera(mouse, camera);
+    tmpPlane.current.setFromNormalAndCoplanarPoint(
+      planeNormal.current,
+      new THREE.Vector3(0, 0, 0),
+    );
+    const hit = new THREE.Vector3();
+    if (tmpRay.current.ray.intersectPlane(tmpPlane.current, hit)) {
+      tmpMouseWorld.current.copy(hit);
+    }
+
+    const state = heartStateRef.current;
+    if (state) {
+      state.mouseWorld.copy(tmpMouseWorld.current);
+      const dToHeart = tmpMouseWorld.current.length();
+      const close = dToHeart < 1.2;
+      state.mouseActive = close ? 1 : 0;
+      // BPM 65 (resting) → 130 (close)
+      const targetBpm = THREE.MathUtils.lerp(
+        130,
+        65,
+        THREE.MathUtils.smoothstep(dToHeart, 0.0, 1.5),
+      );
+      state.bpm = THREE.MathUtils.lerp(state.bpm, targetBpm, 0.04);
+    }
   });
+
   return (
     <>
-      <ambientLight intensity={0.08} color="#3a4f55" />
-      <spotLight
-        position={[0, 6, 3]}
-        angle={0.55}
-        penumbra={0.7}
-        intensity={120}
-        distance={20}
-        decay={2}
-        color="#f6f1e0"
-        castShadow
-      />
-      <pointLight position={[-4, 1, 2]} intensity={2.5} color="#6fb8c0" decay={2} />
-      <pointLight position={[4, 0.5, -2]} intensity={1.8} color="#ff7a85" decay={2} />
-
-      <group scale={1.6}>
-        <Heart mouse={mouseRef} paused={paused} />
-        {SITES.map((s) => (
-          <Marker
-            key={s.id}
-            id={s.id}
-            position={s.pos}
-            label={s.label}
-            onSelect={onSelect}
-          />
-        ))}
-      </group>
+      <ambientLight intensity={0.15} color="#3a4a55" />
+      <Heart state={heartStateRef} paused={paused} />
+      {SITES.map((s) => (
+        <Marker key={s.id} id={s.id} position={s.pos} onSelect={onSelect} />
+      ))}
     </>
   );
 }
@@ -142,24 +177,22 @@ function SceneInner({
 export default function OperatingRoom() {
   const [selected, setSelected] = useState<Site | null>(null);
   const [opened, setOpened] = useState(false);
-  const mouseRef = useRef({ x: 0, y: 0 });
+  const heartStateRef = useRef<HeartState>({
+    mouseWorld: new THREE.Vector3(0, 0, 100),
+    mouseActive: 0,
+    bpm: 65,
+  });
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      mouseRef.current.x = (e.clientX / window.innerWidth) * 2 - 1;
-      mouseRef.current.y = -((e.clientY / window.innerHeight) * 2 - 1);
-    };
-    window.addEventListener("mousemove", onMove);
-    return () => window.removeEventListener("mousemove", onMove);
-  }, []);
+  const cameraHome = useRef(new THREE.Vector3(0, 0, 4.5));
 
   const handleSelect = (id: Site, worldPos: THREE.Vector3) => {
     setSelected(id);
     const cam = cameraRef.current;
     if (cam) {
-      const target = worldPos.clone().multiplyScalar(1.35);
-      target.z += 1.6;
+      cameraHome.current.copy(cam.position);
+      const dir = worldPos.clone().normalize();
+      const target = worldPos.clone().add(dir.multiplyScalar(0.9));
+      target.z = Math.max(target.z, 1.6);
       gsap.to(cam.position, {
         x: target.x,
         y: target.y,
@@ -178,9 +211,9 @@ export default function OperatingRoom() {
     const cam = cameraRef.current;
     if (cam) {
       gsap.to(cam.position, {
-        x: 0,
-        y: 0,
-        z: 5,
+        x: cameraHome.current.x,
+        y: cameraHome.current.y,
+        z: cameraHome.current.z,
         duration: 0.95,
         ease: "power3.inOut",
         onComplete: () => setSelected(null),
@@ -195,11 +228,15 @@ export default function OperatingRoom() {
       <div className="absolute top-6 left-6 hud-text opacity-60 z-30">
         <span className="text-[var(--od-blue)]">●</span> OR · 04 LIVE
       </div>
-      <div className="absolute top-6 right-6 hud-text opacity-60 z-30">
-        PATIENT · M. MAVUDURU · DOB / —
+      <div className="absolute top-6 right-6 hud-text opacity-60 z-30 text-right">
+        PATIENT · M. MAVUDURU
+        <br />
+        <span className="opacity-70">
+          <BpmDisplay state={heartStateRef} />
+        </span>
       </div>
       <div className="absolute bottom-6 left-6 hud-text opacity-50 z-30">
-        TARGETS · 3 SITES MARKED
+        3 OPERATIVE SITES MARKED
       </div>
       <div className="absolute bottom-6 right-6 hud-text opacity-50 z-30 text-right">
         SCALPEL · #10 BLADE
@@ -208,18 +245,19 @@ export default function OperatingRoom() {
       </div>
 
       <Canvas
-        shadows
-        camera={{ position: [0, 0, 5], fov: 38 }}
+        camera={{ position: [0, 0, 4.5], fov: 35 }}
         onCreated={({ camera }) => {
           cameraRef.current = camera as THREE.PerspectiveCamera;
+          cameraHome.current.copy(camera.position);
         }}
-        gl={{ antialias: true, alpha: true }}
+        gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+        dpr={[1, 2]}
       >
         <color attach="background" args={["#07090a"]} />
-        <fog attach="fog" args={["#07090a", 6, 14]} />
+        <CameraFit />
         <Suspense fallback={null}>
           <SceneInner
-            mouseRef={mouseRef}
+            heartStateRef={heartStateRef}
             paused={selected !== null}
             onSelect={handleSelect}
           />
@@ -231,4 +269,15 @@ export default function OperatingRoom() {
       )}
     </div>
   );
+}
+
+function BpmDisplay({ state }: { state: React.RefObject<HeartState> }) {
+  const [bpm, setBpm] = useState(65);
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (state.current) setBpm(Math.round(state.current.bpm));
+    }, 200);
+    return () => clearInterval(id);
+  }, [state]);
+  return <span>BPM {bpm}</span>;
 }
