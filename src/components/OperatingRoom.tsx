@@ -306,12 +306,14 @@ export default function OperatingRoom() {
         <span className="text-[var(--od-blue)]">●</span> OR · 04 LIVE
       </div>
 
-      <div className="absolute top-6 right-6 z-30 text-right max-w-[260px] hud-text">
-        <div className="opacity-60 mb-2">PATIENT · M. MAVUDURU</div>
-        <div className="text-[0.6rem] leading-relaxed text-[var(--bone)]/85 normal-case tracking-[0.04em] font-display italic mb-3">
+      <div className="absolute top-6 right-6 z-30 text-right max-w-[300px] font-mono text-[var(--bone)]">
+        <div className="text-[0.66rem] tracking-[0.22em] uppercase opacity-55 mb-2.5">
+          PATIENT · MOUNISH MAVUDURU
+        </div>
+        <div className="text-[0.72rem] leading-snug opacity-80 tracking-[0.02em] mb-2.5">
           {TAGLINE}
         </div>
-        <div className="flex items-center justify-end gap-3 text-[0.58rem] opacity-80">
+        <div className="flex items-center justify-end gap-2.5 text-[0.7rem] tracking-[0.02em] opacity-70">
           <a
             href={GITHUB}
             target="_blank"

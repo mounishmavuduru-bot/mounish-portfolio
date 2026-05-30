@@ -9,7 +9,6 @@ export default function IntroScreen({ onEnter }: { onEnter: () => void }) {
   const [typed, setTyped] = useState("");
   const [showSub, setShowSub] = useState(false);
   const [showBtn, setShowBtn] = useState(false);
-  const [flick, setFlick] = useState(false);
 
   useEffect(() => {
     let i = 0;
@@ -26,8 +25,7 @@ export default function IntroScreen({ onEnter }: { onEnter: () => void }) {
   }, []);
 
   const handleDrape = () => {
-    setFlick(true);
-    setTimeout(onEnter, 950);
+    onEnter();
   };
 
   return (
@@ -74,9 +72,6 @@ export default function IntroScreen({ onEnter }: { onEnter: () => void }) {
         EST. CASE TIME · LIFE
       </div>
 
-      {flick && (
-        <div className="fixed inset-0 z-50 pointer-events-none light-flicker" />
-      )}
     </div>
   );
 }
