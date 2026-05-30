@@ -1,15 +1,15 @@
 /* eslint-disable react-hooks/immutability -- R3F mutates three.js objects in useFrame; standard pattern */
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { buildHeartCloud, REGION_COUNT } from "@/lib/anatomicalHeart";
+import { loadHeartCloud, HeartCloud } from "@/lib/stlHeart";
 
 interface HeartState {
   mouseWorld: THREE.Vector3;
   mouseActive: number;
-  dim: number; // 0 = full bright, 1 = dimmed (when panel open)
+  dim: number;
 }
 
 const RESTING_BPM = 65;
@@ -17,7 +17,6 @@ const POINT_COUNT = 14000;
 
 const VERT = /* glsl */ `
 attribute vec3 aNormal;
-attribute float aRegion;
 attribute float aSeed;
 
 uniform float uTime;
@@ -26,20 +25,17 @@ uniform vec3 uMouse;
 uniform float uMouseActive;
 uniform float uRepelRadius;
 uniform float uRepelStrength;
-uniform float uRegionGlow[${REGION_COUNT}];
 uniform float uPixelRatio;
 uniform float uBaseSize;
 uniform float uDim;
 
-varying float vRegion;
-varying float vGlow;
 varying float vBeat;
 varying float vDim;
 
 void main() {
   vec3 pos = position * uBeat;
 
-  // mouse repulsion (positions are in local space; mouse uniform is already local)
+  // mouse repulsion — physical only; no color change
   vec3 toMouse = pos - uMouse;
   float dist = length(toMouse);
   float falloff = 1.0 - smoothstep(0.0, uRepelRadius, dist);
@@ -47,19 +43,9 @@ void main() {
   pos += normalize(toMouse + vec3(0.0001)) * repel;
 
   // tiny organic shimmer
-  float shimmer = 0.006 * sin(uTime * 1.8 + aSeed * 13.0);
+  float shimmer = 0.004 * sin(uTime * 1.8 + aSeed * 13.0);
   pos += aNormal * shimmer;
 
-  int region = int(aRegion + 0.5);
-  float glow = uRegionGlow[0];
-  if (region == 1) glow = uRegionGlow[1];
-  else if (region == 2) glow = uRegionGlow[2];
-  else if (region == 3) glow = uRegionGlow[3];
-  else if (region == 4) glow = uRegionGlow[4];
-  else if (region == 5) glow = uRegionGlow[5];
-
-  vRegion = aRegion;
-  vGlow = glow + falloff * 0.5;
   vBeat = uBeat;
   vDim = uDim;
 
@@ -67,9 +53,7 @@ void main() {
   gl_Position = projectionMatrix * mv;
 
   float dShade = clamp(-mv.z * 0.18, 0.5, 1.6);
-  float sizeMult = (1.0 + glow * 0.7 + (uBeat - 1.0) * 4.0);
-  // make points slightly smaller when dimmed so cards read above
-  sizeMult *= mix(1.0, 0.6, uDim);
+  float sizeMult = (1.0 + (uBeat - 1.0) * 4.0) * mix(1.0, 0.6, uDim);
   gl_PointSize = uBaseSize * uPixelRatio * dShade * sizeMult;
 }
 `;
@@ -77,8 +61,6 @@ void main() {
 const FRAG = /* glsl */ `
 precision highp float;
 
-varying float vRegion;
-varying float vGlow;
 varying float vBeat;
 varying float vDim;
 
@@ -87,21 +69,16 @@ void main() {
   float r = length(c);
   if (r > 0.5) discard;
 
-  // soft circular falloff
   float alpha = smoothstep(0.5, 0.1, r);
 
-  vec3 baseRed = vec3(0.78, 0.10, 0.13);
-  vec3 hotRed  = vec3(1.0, 0.55, 0.45);
-  vec3 vesselRed = vec3(0.86, 0.20, 0.18);
+  vec3 baseRed = vec3(0.82, 0.13, 0.14);
+  vec3 hotRed  = vec3(1.0, 0.5, 0.42);
 
   vec3 color = baseRed;
-  if (vRegion > 3.5) color = vesselRed;
+  // gentle beat-driven highlight only (no cursor color change)
+  color = mix(color, hotRed, clamp((vBeat - 1.0) * 4.0, 0.0, 0.35));
+  color = mix(color, hotRed, smoothstep(0.5, 0.0, r) * 0.18);
 
-  float boost = clamp(vGlow + (vBeat - 1.0) * 6.0, 0.0, 1.4);
-  color = mix(color, hotRed, clamp(boost, 0.0, 0.9));
-  color = mix(color, hotRed, smoothstep(0.5, 0.0, r) * 0.22);
-
-  // dim when panel open — desaturate + darken
   float lum = dot(color, vec3(0.299, 0.587, 0.114));
   vec3 dimmedColor = mix(color, vec3(lum * 0.5), vDim);
   alpha *= mix(0.95, 0.32, vDim);
@@ -130,9 +107,19 @@ export default function Heart({
   state: React.RefObject<HeartState>;
 }) {
   const ref = useRef<THREE.Points>(null);
-  const cloud = useMemo(() => buildHeartCloud(POINT_COUNT), []);
+  const [cloud, setCloud] = useState<HeartCloud | null>(null);
   const cyclePhase = useRef(0);
   const dimSmoothed = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadHeartCloud("/heart.stl", POINT_COUNT, 1.7).then((c) => {
+      if (!cancelled) setCloud(c);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const uniforms = useMemo(
     () => ({
@@ -142,7 +129,6 @@ export default function Heart({
       uMouseActive: { value: 0 },
       uRepelRadius: { value: 0.42 },
       uRepelStrength: { value: 0.12 },
-      uRegionGlow: { value: new Array(REGION_COUNT).fill(0) },
       uPixelRatio: {
         value:
           typeof window !== "undefined"
@@ -161,31 +147,21 @@ export default function Heart({
     const s = state.current;
     if (!s) return;
 
-    // beat phase advances at fixed resting BPM
     const bps = RESTING_BPM / 60;
     cyclePhase.current = (cyclePhase.current + dt * bps) % 1;
     uniforms.uBeat.value = cardiacBeat(cyclePhase.current);
     uniforms.uTime.value += dt;
 
-    // mouse uniform — transform world-space mouse into local heart space
     const localMouse = s.mouseWorld.clone();
     m.worldToLocal(localMouse);
     uniforms.uMouse.value.copy(localMouse);
     uniforms.uMouseActive.value = s.mouseActive;
 
-    // dim lerp
     dimSmoothed.current = THREE.MathUtils.lerp(dimSmoothed.current, s.dim, 0.08);
     uniforms.uDim.value = dimSmoothed.current;
-
-    // region glow based on mouse proximity to each region centroid (local)
-    const glow = uniforms.uRegionGlow.value as number[];
-    for (let i = 0; i < REGION_COUNT; i++) {
-      const c = cloud.regionCentroids[i];
-      const d = localMouse.distanceTo(c);
-      const proxim = THREE.MathUtils.smoothstep(d, 0.55, 0.1);
-      glow[i] = THREE.MathUtils.lerp(glow[i], proxim * 0.9, 0.12);
-    }
   });
+
+  if (!cloud) return null;
 
   return (
     <points ref={ref} geometry={cloud.geometry}>
