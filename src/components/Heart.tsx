@@ -126,10 +126,8 @@ function cardiacBeat(t: number): number {
 
 export default function Heart({
   state,
-  paused,
 }: {
   state: React.RefObject<HeartState>;
-  paused: boolean;
 }) {
   const ref = useRef<THREE.Points>(null);
   const cloud = useMemo(() => buildHeartCloud(POINT_COUNT), []);
@@ -162,10 +160,6 @@ export default function Heart({
     if (!m) return;
     const s = state.current;
     if (!s) return;
-
-    if (!paused) {
-      m.rotation.y += dt * 0.16;
-    }
 
     // beat phase advances at fixed resting BPM
     const bps = RESTING_BPM / 60;

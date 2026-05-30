@@ -140,12 +140,10 @@ function CameraFit() {
 function SceneInner({
   onSelect,
   heartStateRef,
-  paused,
   dimmed,
 }: {
   onSelect: (id: Site, worldPos: THREE.Vector3) => void;
   heartStateRef: React.RefObject<HeartState>;
-  paused: boolean;
   dimmed: boolean;
 }) {
   const { camera, mouse } = useThree();
@@ -177,7 +175,7 @@ function SceneInner({
   return (
     <>
       <ambientLight intensity={0.15} color="#3a4a55" />
-      <Heart state={heartStateRef} paused={paused} />
+      <Heart state={heartStateRef} />
       {SITES.map((s) => (
         <Marker
           key={s.id}
@@ -303,7 +301,6 @@ export default function OperatingRoom() {
         <Suspense fallback={null}>
           <SceneInner
             heartStateRef={heartStateRef}
-            paused={selected !== null}
             dimmed={selected !== null}
             onSelect={handleSelect}
           />
