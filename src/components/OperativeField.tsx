@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect -- delayed reveal of cavity content after open animation */
+/* eslint-disable react-hooks/set-state-in-effect -- delayed reveal of content after camera zoom */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -16,13 +16,13 @@ function ProjectsList() {
       {projects.map((p, i) => (
         <li
           key={i}
-          className="of-card flex items-start justify-between gap-4"
+          className="flex items-start justify-between gap-4 px-4 py-3 rounded-md border border-white/8 bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
           style={{ animationDelay: `${i * 70}ms` }}
         >
           <span className="font-display text-[var(--bone)] text-base md:text-lg leading-snug">
             {p.name}
           </span>
-          <span className="hud-text shrink-0 text-[0.55rem] opacity-75">
+          <span className="hud-text shrink-0 text-[0.55rem] opacity-70">
             {p.tag}
           </span>
         </li>
@@ -37,13 +37,13 @@ function AwardsList() {
       {awards.map((a, i) => (
         <li
           key={i}
-          className="of-card flex items-center justify-between gap-4"
+          className="flex items-center justify-between gap-4 px-4 py-3 rounded-md border border-white/8 bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
           style={{ animationDelay: `${i * 90}ms` }}
         >
           <span className="font-display text-[var(--bone)] text-base md:text-lg">
             {a.name}
           </span>
-          <span className="hud-text text-[0.6rem] opacity-75">{a.org}</span>
+          <span className="hud-text text-[0.6rem] opacity-70">{a.org}</span>
         </li>
       ))}
     </ul>
@@ -56,14 +56,14 @@ function PositionsList() {
       {positions.map((p, i) => (
         <li
           key={i}
-          className="of-card flex items-center justify-between gap-4"
+          className="flex items-center justify-between gap-4 px-4 py-3 rounded-md border border-white/8 bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
           style={{ animationDelay: `${i * 70}ms` }}
         >
           <span className="font-display text-[var(--bone)] text-base md:text-lg">
             {p.role}
           </span>
           {p.org && (
-            <span className="hud-text text-[0.6rem] opacity-75">{p.org}</span>
+            <span className="hud-text text-[0.6rem] opacity-70">{p.org}</span>
           )}
         </li>
       ))}
@@ -106,7 +106,7 @@ export default function OperativeField({
   open: boolean;
   onClose: () => void;
 }) {
-  const [contentVisible, setContentVisible] = useState(false);
+  const [show, setShow] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -118,141 +118,80 @@ export default function OperativeField({
 
   useEffect(() => {
     if (open) {
-      const t = setTimeout(() => setContentVisible(true), 420);
+      const t = setTimeout(() => setShow(true), 80);
       return () => clearTimeout(t);
     } else {
-      setContentVisible(false);
+      setShow(false);
     }
   }, [open]);
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-center justify-center pointer-events-none"
-      style={{ perspective: "1400px" }}
-    >
-      {/* Incision opening — cavity that scales from a line */}
+    <div className="fixed inset-0 z-40 flex items-center justify-center pointer-events-none">
       <div
-        className="relative pointer-events-auto"
+        className="liquid-glass pointer-events-auto flex flex-col p-8 md:p-10 overflow-y-auto"
         style={{
-          width: "min(760px, 90vw)",
-          height: "min(640px, 82vh)",
-          transform: open
-            ? "scaleY(1) rotateX(8deg)"
-            : "scaleY(0.04) rotateX(0deg)",
-          transformOrigin: "center center",
+          width: "min(640px, 88vw)",
+          maxHeight: "82vh",
+          opacity: show ? 1 : 0,
+          transform: show ? "scale(1) translateY(0)" : "scale(0.94) translateY(20px)",
           transition:
-            "transform 720ms cubic-bezier(.6, 0, .25, 1), opacity 400ms ease",
-          transformStyle: "preserve-3d",
-          opacity: open ? 1 : 0.6,
+            "opacity 420ms cubic-bezier(.16,.84,.32,1), transform 480ms cubic-bezier(.16,.84,.32,1)",
         }}
       >
-        {/* Tissue cavity rim — irregular organic boundary */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(ellipse 60% 50% at 50% 40%, #5a0f12 0%, #2d0608 60%, #0c0306 100%)",
-            borderRadius: "48% 52% 46% 54% / 38% 42% 38% 42%",
-            boxShadow:
-              "inset 0 0 80px rgba(0,0,0,0.85), inset 0 -10px 30px rgba(255, 70, 70, 0.15), 0 0 120px rgba(180, 30, 35, 0.45)",
-            border: "1px solid rgba(220, 80, 90, 0.4)",
-          }}
-        />
+        <div className="flex items-start justify-between mb-7 flex-shrink-0">
+          <div>
+            <p
+              className="font-mono opacity-65"
+              style={{
+                fontSize: "0.66rem",
+                letterSpacing: "0.26em",
+                textTransform: "uppercase",
+                color: "color-mix(in oklab, var(--od-blue) 75%, white)",
+              }}
+            >
+              ▸ SITE / {site.toUpperCase()}
+            </p>
+            <h2
+              className="font-display text-4xl md:text-5xl mt-2 font-light"
+              style={{
+                color: "#fbf6e8",
+              }}
+            >
+              {siteLabels[site]}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="group flex items-center gap-2 font-mono opacity-80 hover:opacity-100"
+            style={{
+              fontSize: "0.66rem",
+              letterSpacing: "0.26em",
+              textTransform: "uppercase",
+              color: "color-mix(in oklab, var(--od-blue) 75%, white)",
+            }}
+            title="Close (Esc)"
+          >
+            <SutureIcon />
+            <span>SUTURE</span>
+          </button>
+        </div>
 
-        {/* Wet tissue specular ring */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(ellipse 65% 18% at 50% 18%, rgba(255, 200, 200, 0.22), transparent 60%)",
-            borderRadius: "48% 52% 46% 54% / 38% 42% 38% 42%",
-            mixBlendMode: "screen",
-          }}
-        />
+        <div className="flex-1">
+          <SectionContent site={site} />
+        </div>
 
-        {/* Surgical site light — strong top-down spot */}
-        <div
-          className="absolute inset-0 pointer-events-none"
+        <p
+          className="font-mono opacity-40 mt-6"
           style={{
-            background:
-              "radial-gradient(ellipse 55% 38% at 50% 20%, rgba(255, 248, 220, 0.35), transparent 65%)",
-            borderRadius: "48% 52% 46% 54% / 38% 42% 38% 42%",
-            mixBlendMode: "screen",
-          }}
-        />
-
-        {/* Inner darker basin */}
-        <div
-          className="absolute inset-[6%] pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(ellipse 60% 50% at 50% 60%, transparent 30%, rgba(20,5,6,0.6) 80%)",
-            borderRadius: "44% 56% 42% 58% / 36% 44% 36% 44%",
-          }}
-        />
-
-        {/* CONTENT layer — perspective tilted */}
-        <div
-          className="absolute inset-0 flex flex-col p-10 md:p-12 overflow-y-auto"
-          style={{
-            opacity: contentVisible ? 1 : 0,
-            transform: contentVisible
-              ? "translateZ(40px) rotateX(-6deg)"
-              : "translateZ(0px) rotateX(0deg)",
-            transformOrigin: "50% 30%",
-            transition:
-              "opacity 500ms ease 100ms, transform 600ms cubic-bezier(.16,.84,.32,1) 100ms",
+            fontSize: "0.55rem",
+            letterSpacing: "0.26em",
+            textTransform: "uppercase",
+            color: "color-mix(in oklab, var(--od-blue) 75%, white)",
           }}
         >
-          <div className="flex items-start justify-between mb-7 flex-shrink-0">
-            <div>
-              <p className="hud-text opacity-70">
-                ▸ SITE / {site.toUpperCase()}
-              </p>
-              <h2
-                className="font-display text-4xl md:text-5xl mt-2 font-light"
-                style={{
-                  color: "#fbf6e8",
-                  textShadow: "0 0 24px rgba(255, 220, 200, 0.4)",
-                }}
-              >
-                {siteLabels[site]}
-              </h2>
-            </div>
-            <button
-              onClick={onClose}
-              className="group flex items-center gap-2 hud-text opacity-80 hover:opacity-100"
-              title="Suture closed (Esc)"
-            >
-              <SutureIcon />
-              <span>SUTURE</span>
-            </button>
-          </div>
-
-          <div className="flex-1">
-            <SectionContent site={site} />
-          </div>
-
-          <p className="hud-text opacity-40 mt-6 text-[0.55rem]">
-            ESC OR SUTURE TO CLOSE
-          </p>
-        </div>
+          ESC OR SUTURE TO CLOSE
+        </p>
       </div>
-
-      {/* Incision line — bright horizontal "cut" that becomes the opening */}
-      <div
-        className="absolute left-1/2 top-1/2 pointer-events-none"
-        style={{
-          width: "min(680px, 80vw)",
-          height: "2px",
-          background:
-            "linear-gradient(90deg, transparent 0%, #ff8080 20%, #fff0e0 50%, #ff8080 80%, transparent 100%)",
-          boxShadow: "0 0 24px rgba(255, 120, 120, 0.85)",
-          transform: "translate(-50%, -50%)",
-          opacity: open ? 0 : 1,
-          transition: "opacity 300ms ease",
-        }}
-      />
     </div>
   );
 }

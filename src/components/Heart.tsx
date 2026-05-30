@@ -31,10 +31,11 @@ varying float vDim;
 void main() {
   vec3 pos = position;
 
-  // physical mouse repulsion (no color change)
+  // physical mouse repulsion (gentle, eased)
   vec3 toMouse = pos - uMouse;
   float dist = length(toMouse);
   float falloff = 1.0 - smoothstep(0.0, uRepelRadius, dist);
+  falloff = pow(falloff, 1.8); // softer onset
   float repel = falloff * uRepelStrength * uMouseActive;
   pos += normalize(toMouse + vec3(0.0001)) * repel;
 
@@ -95,8 +96,8 @@ export default function Heart({
       uTime: { value: 0 },
       uMouse: { value: new THREE.Vector3(0, 0, 100) },
       uMouseActive: { value: 0 },
-      uRepelRadius: { value: 0.75 },
-      uRepelStrength: { value: 0.34 },
+      uRepelRadius: { value: 0.6 },
+      uRepelStrength: { value: 0.14 },
       uPixelRatio: {
         value:
           typeof window !== "undefined"

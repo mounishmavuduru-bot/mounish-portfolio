@@ -87,8 +87,8 @@ function Marker({
           }
         }}
       >
-        <sphereGeometry args={[0.09, 16, 16]} />
-        <meshBasicMaterial color="#ffffff" transparent opacity={0} />
+        <sphereGeometry args={[0.55, 24, 24]} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0} depthWrite={false} />
       </mesh>
       <Html
         center
@@ -97,7 +97,7 @@ function Marker({
         style={{
           opacity: dimmed ? 0.15 : 1,
           transition: "opacity 360ms ease",
-          pointerEvents: dimmed ? "none" : "auto",
+          pointerEvents: "none",
         }}
       >
         <div className="pointer-events-none select-none relative w-16 h-16 flex items-center justify-center">
