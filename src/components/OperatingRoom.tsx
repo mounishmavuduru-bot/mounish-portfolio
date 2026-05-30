@@ -8,6 +8,7 @@ import * as THREE from "three";
 import gsap from "gsap";
 import Heart, { HeartState } from "./Heart";
 import OperativeField from "./OperativeField";
+import SurgicalDrape from "./SurgicalDrape";
 import {
   Site,
   siteLabels,
@@ -239,7 +240,8 @@ export default function OperatingRoom() {
   };
 
   return (
-    <div className="fixed inset-0 z-10 or-vignette">
+    <div className="fixed inset-0 z-10">
+      <SurgicalDrape />
       <div className="absolute top-6 left-6 hud-text opacity-60 z-30">
         <span className="text-[var(--od-blue)]">●</span> OR · 04 LIVE
       </div>
@@ -295,8 +297,8 @@ export default function OperatingRoom() {
         }}
         gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
         dpr={[1, 2]}
+        style={{ position: "relative", zIndex: 10 }}
       >
-        <color attach="background" args={["#07090a"]} />
         <CameraFit />
         <Suspense fallback={null}>
           <SceneInner
