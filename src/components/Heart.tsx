@@ -103,7 +103,7 @@ export default function Heart({
             ? Math.min(window.devicePixelRatio, 2)
             : 1,
       },
-      uBaseSize: { value: 4.4 },
+      uBaseSize: { value: 2.4 },
       uDim: { value: 0 },
     }),
     [],

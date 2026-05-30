@@ -30,45 +30,49 @@ export default function IntroScreen({ onEnter }: { onEnter: () => void }) {
 
   return (
     <div className="fixed inset-0 z-30 flex flex-col items-center justify-center bg-[#07090a] or-vignette">
-      <div className="absolute top-6 left-6 hud-text opacity-60">
+      <div className="absolute top-6 left-6 liquid-glass liquid-glass-sm hud-text opacity-90">
         <span className="text-[var(--od-blue)]">●</span> PREP ROOM · 01
       </div>
-      <div className="absolute top-6 right-6 hud-text opacity-60">
+      <div className="absolute top-6 right-6 liquid-glass liquid-glass-sm hud-text opacity-90">
         OR · 04 / STATUS: STERILE
       </div>
 
-      <div className="text-center px-6">
-        <h1 className="font-display text-5xl md:text-7xl lg:text-8xl font-light tracking-tight text-[var(--bone)]">
-          {typed}
-          <span className="caret align-middle h-[0.9em]" />
-        </h1>
-
-        <p
-          className={`mt-8 hud-text transition-opacity duration-700 ${
-            showSub ? "opacity-100" : "opacity-0"
-          }`}
-        >
-          {SUBLINE}
-        </p>
+      <div className="text-center px-6 flex flex-col items-center gap-6">
+        <div className="liquid-glass px-10 py-7 md:px-14 md:py-9">
+          <h1 className="font-display text-5xl md:text-7xl lg:text-8xl font-light tracking-tight text-[var(--bone)]">
+            {typed}
+            <span className="caret align-middle h-[0.9em]" />
+          </h1>
+        </div>
 
         <div
-          className={`mt-12 transition-opacity duration-700 ${
+          className={`liquid-glass liquid-glass-sm transition-opacity duration-700 ${
+            showSub ? "opacity-90" : "opacity-0"
+          }`}
+        >
+          <p className="hud-text">{SUBLINE}</p>
+        </div>
+
+        <div
+          className={`transition-opacity duration-700 flex flex-col items-center gap-3 ${
             showBtn ? "opacity-100" : "opacity-0 pointer-events-none"
           }`}
         >
           <button onClick={handleDrape} className="btn-drape">
             Drape Up
           </button>
-          <p className="hud-text mt-4 opacity-40 text-[0.62rem]">
-            CLICK TO ENTER OR
-          </p>
+          <div className="liquid-glass liquid-glass-sm">
+            <p className="hud-text opacity-70 text-[0.62rem]">
+              CLICK TO ENTER OR
+            </p>
+          </div>
         </div>
       </div>
 
-      <div className="absolute bottom-6 left-6 hud-text opacity-40">
+      <div className="absolute bottom-6 left-6 liquid-glass liquid-glass-sm hud-text opacity-80">
         SURGEON · M. MAVUDURU
       </div>
-      <div className="absolute bottom-6 right-6 hud-text opacity-40">
+      <div className="absolute bottom-6 right-6 liquid-glass liquid-glass-sm hud-text opacity-80">
         EST. CASE TIME · LIFE
       </div>
 

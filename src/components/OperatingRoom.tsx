@@ -100,50 +100,56 @@ function Marker({
           pointerEvents: dimmed ? "none" : "auto",
         }}
       >
-        <div
-          className="pointer-events-none select-none flex items-center gap-3"
-          style={{
-            transform: hover ? "translateX(8px)" : "translateX(0)",
-            transition: "transform 280ms cubic-bezier(.16,.84,.32,1)",
-          }}
-        >
-          <div className="relative">
-            <div
-              className={`rounded-full border transition-all duration-300 ${
-                hover
-                  ? "border-[#9ee6ee] w-7 h-7 marker-pulse-fast"
-                  : "border-[#6fb8c0] w-4 h-4 marker-pulse"
-              }`}
-              style={{
-                boxShadow: hover
-                  ? "0 0 22px rgba(158,230,238,0.9), inset 0 0 8px rgba(158,230,238,0.5)"
-                  : "0 0 8px rgba(111,184,192,0.5)",
-              }}
-            />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div
-                className={`rounded-full transition-all duration-300 ${
-                  hover ? "w-1 h-1 bg-[#cdf2f6]" : "w-[2px] h-[2px] bg-[#9ec9cd]"
-                }`}
-                style={{
-                  boxShadow: hover ? "0 0 6px #cdf2f6" : "0 0 3px #9ec9cd",
-                }}
-              />
-            </div>
-          </div>
+        <div className="pointer-events-none select-none relative w-16 h-16 flex items-center justify-center">
+          {/* marker: dot + core ring + 3 staggered ripple rings; hidden on hover */}
           <div
-            className="hud-text whitespace-nowrap overflow-hidden"
+            className="absolute inset-0 flex items-center justify-center"
             style={{
-              maxWidth: hover ? "200px" : "0",
-              opacity: hover ? 1 : 0,
-              color: "#cdf2f6",
-              fontSize: "0.62rem",
-              letterSpacing: "0.32em",
-              transition:
-                "max-width 320ms cubic-bezier(.16,.84,.32,1), opacity 220ms ease",
+              opacity: hover ? 0 : 1,
+              transition: "opacity 220ms ease",
             }}
           >
-            ▸ {siteLabels[id]}
+            <div className="relative w-5 h-5">
+              <div
+                className="absolute inset-0 rounded-full border border-[#9ee6ee]"
+                style={{
+                  boxShadow:
+                    "0 0 12px rgba(158,230,238,0.7), inset 0 0 4px rgba(158,230,238,0.5)",
+                }}
+              />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div
+                  className="w-1 h-1 rounded-full bg-[#cdf2f6]"
+                  style={{ boxShadow: "0 0 6px #cdf2f6" }}
+                />
+              </div>
+              <span className="ripple-ring d1" />
+              <span className="ripple-ring d2" />
+              <span className="ripple-ring d3" />
+            </div>
+          </div>
+
+          {/* label: shown only on hover, in same spot */}
+          <div
+            className="absolute inset-0 flex items-center justify-center"
+            style={{
+              opacity: hover ? 1 : 0,
+              transition: "opacity 220ms ease",
+            }}
+          >
+            <span
+              className="whitespace-nowrap"
+              style={{
+                fontFamily: "var(--font-mono), monospace",
+                fontSize: "0.66rem",
+                letterSpacing: "0.28em",
+                textTransform: "uppercase",
+                color: "#cdf2f6",
+                textShadow: "0 0 10px rgba(158,230,238,0.6)",
+              }}
+            >
+              {siteLabels[id]}
+            </span>
           </div>
         </div>
       </Html>
@@ -302,18 +308,18 @@ export default function OperatingRoom() {
   return (
     <div className="fixed inset-0 z-10">
       <SurgicalDrape />
-      <div className="absolute top-6 left-6 hud-text opacity-60 z-30">
+      <div className="absolute top-6 left-6 z-30 liquid-glass liquid-glass-sm hud-text opacity-90">
         <span className="text-[var(--od-blue)]">●</span> OR · 04 LIVE
       </div>
 
-      <div className="absolute top-6 right-6 z-30 text-right max-w-[300px] font-mono text-[var(--bone)]">
-        <div className="text-[0.66rem] tracking-[0.22em] uppercase opacity-55 mb-2.5">
+      <div className="absolute top-6 right-6 z-30 liquid-glass liquid-glass-md text-right max-w-[320px] font-mono text-[var(--bone)]">
+        <div className="text-[0.66rem] tracking-[0.22em] uppercase opacity-60 mb-2.5">
           PATIENT · MOUNISH MAVUDURU
         </div>
-        <div className="text-[0.72rem] leading-snug opacity-80 tracking-[0.02em] mb-2.5">
+        <div className="text-[0.72rem] leading-snug opacity-85 tracking-[0.02em] mb-2.5">
           {TAGLINE}
         </div>
-        <div className="flex items-center justify-end gap-2.5 text-[0.7rem] tracking-[0.02em] opacity-70">
+        <div className="flex items-center justify-end gap-2.5 text-[0.7rem] tracking-[0.02em] opacity-75">
           <a
             href={GITHUB}
             target="_blank"
@@ -341,13 +347,13 @@ export default function OperatingRoom() {
         </div>
       </div>
 
-      <div className="absolute bottom-6 left-6 hud-text opacity-50 z-30">
+      <div className="absolute bottom-6 left-6 z-30 liquid-glass liquid-glass-sm hud-text opacity-90">
         DRAG TO ROTATE · 3 SITES MARKED
       </div>
-      <div className="absolute bottom-6 right-6 hud-text opacity-50 z-30 text-right">
+      <div className="absolute bottom-6 right-6 z-30 liquid-glass liquid-glass-sm hud-text opacity-90 text-right">
         SCALPEL · #10 BLADE
         <br />
-        <span className="opacity-60">CLICK A SITE TO INCISE</span>
+        <span className="opacity-70">CLICK A SITE TO INCISE</span>
       </div>
 
       <Canvas
