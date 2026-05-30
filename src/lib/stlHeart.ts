@@ -16,8 +16,8 @@ export interface HeartCloud {
  */
 export async function loadHeartCloud(
   url: string,
-  count = 14000,
-  targetHeight = 1.7,
+  count = 22000,
+  targetHeight = 2.55,
 ): Promise<HeartCloud> {
   const res = await fetch(url);
   const buf = await res.arrayBuffer();
@@ -87,11 +87,7 @@ export async function loadHeartCloud(
   const outNormal = new Float32Array(count * 3);
   const outSeed = new Float32Array(count);
 
-  // tilt: the NIH3D heart STL tends to sit upright; nudge to a slight anterior tilt
-  const tilt = new THREE.Quaternion().setFromEuler(
-    new THREE.Euler(-0.05, 0, -0.08),
-  );
-
+  // keep STL native orientation; user controls view via OrbitControls
   const tmp = new THREE.Vector3();
   const n = new THREE.Vector3();
 
@@ -121,8 +117,6 @@ export async function loadHeartCloud(
 
     // recenter then scale
     tmp.sub(center).multiplyScalar(scale);
-    tmp.applyQuaternion(tilt);
-    n.applyQuaternion(tilt);
 
     outPos[i * 3] = tmp.x;
     outPos[i * 3 + 1] = tmp.y;

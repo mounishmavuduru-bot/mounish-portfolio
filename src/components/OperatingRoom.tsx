@@ -1,14 +1,14 @@
-/* eslint-disable react-hooks/immutability -- R3F mutates three.js camera/objects directly */
 "use client";
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Html } from "@react-three/drei";
+import { Html, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import gsap from "gsap";
 import Heart, { HeartState } from "./Heart";
 import OperativeField from "./OperativeField";
 import SurgicalDrape from "./SurgicalDrape";
+import { loadHeartCloud, HeartCloud } from "@/lib/stlHeart";
 import {
   Site,
   siteLabels,
@@ -18,11 +18,42 @@ import {
   EMAIL,
 } from "@/data/content";
 
-const SITES: { id: Site; pos: [number, number, number] }[] = [
-  { id: "projects", pos: [0.62, 0.18, 0.95] },
-  { id: "achievements", pos: [-0.72, 0.6, 0.5] },
-  { id: "positions", pos: [0.15, -0.58, 0.9] },
+const HEART_TARGET_HEIGHT = 2.55;
+const CAMERA_MARGIN = 1.05;
+
+// Anchor targets in STL-local space (after recenter + scale to longest axis = HEART_TARGET_HEIGHT).
+// Each will be snapped to nearest STL surface point.
+const SITE_ANCHORS: { id: Site; anchor: THREE.Vector3 }[] = [
+  { id: "projects", anchor: new THREE.Vector3(0.0, 1.0, 0.2) }, // top — great vessels / aortic arch
+  { id: "achievements", anchor: new THREE.Vector3(-0.45, -1.0, 0.15) }, // bottom-left — LV apex
+  { id: "positions", anchor: new THREE.Vector3(0.55, 0.05, 0.2) }, // mid-right — RA / right side
 ];
+
+function snapToSurface(
+  cloud: HeartCloud,
+  anchor: THREE.Vector3,
+  offsetAlongNormal = 0.04,
+): [THREE.Vector3, THREE.Vector3] {
+  const positions = cloud.geometry.attributes.position as THREE.BufferAttribute;
+  const normals = cloud.geometry.attributes.aNormal as THREE.BufferAttribute;
+  let bestI = 0;
+  let bestD = Infinity;
+  const p = new THREE.Vector3();
+  for (let i = 0; i < positions.count; i++) {
+    p.fromBufferAttribute(positions, i);
+    const d = p.distanceToSquared(anchor);
+    if (d < bestD) {
+      bestD = d;
+      bestI = i;
+    }
+  }
+  const surface = new THREE.Vector3().fromBufferAttribute(positions, bestI);
+  const normal = new THREE.Vector3()
+    .fromBufferAttribute(normals, bestI)
+    .normalize();
+  surface.addScaledVector(normal, offsetAlongNormal);
+  return [surface, normal];
+}
 
 function Marker({
   id,
@@ -31,7 +62,7 @@ function Marker({
   dimmed,
 }: {
   id: Site;
-  position: [number, number, number];
+  position: THREE.Vector3;
   onSelect: (id: Site, worldPos: THREE.Vector3) => void;
   dimmed: boolean;
 }) {
@@ -61,7 +92,7 @@ function Marker({
       </mesh>
       <Html
         center
-        distanceFactor={4.5}
+        distanceFactor={5.5}
         zIndexRange={[20, 0]}
         style={{
           opacity: dimmed ? 0.15 : 1,
@@ -125,39 +156,46 @@ function CameraFit() {
   useEffect(() => {
     const persp = camera as THREE.PerspectiveCamera;
     const aspect = size.width / size.height;
-    const heartHeight = 2.0;
-    const heartWidth = 1.5;
+    const heartHeight = HEART_TARGET_HEIGHT;
+    const heartWidth = HEART_TARGET_HEIGHT * 0.7;
     const fovRad = (persp.fov * Math.PI) / 180;
     const distForHeight = heartHeight / (2 * Math.tan(fovRad / 2));
     const horizontalFov = 2 * Math.atan(Math.tan(fovRad / 2) * aspect);
     const distForWidth = heartWidth / (2 * Math.tan(horizontalFov / 2));
-    const target = Math.max(distForHeight, distForWidth) * 1.25;
-    camera.position.z = target;
+    const target = Math.max(distForHeight, distForWidth) * CAMERA_MARGIN;
+    camera.position.set(0, 0, target);
     camera.updateProjectionMatrix();
   }, [camera, size]);
   return null;
 }
 
 function SceneInner({
+  cloud,
+  markers,
   onSelect,
   heartStateRef,
   dimmed,
 }: {
+  cloud: HeartCloud;
+  markers: { id: Site; position: THREE.Vector3 }[];
   onSelect: (id: Site, worldPos: THREE.Vector3) => void;
   heartStateRef: React.RefObject<HeartState>;
   dimmed: boolean;
 }) {
   const { camera, mouse } = useThree();
-  const planeNormal = useRef(new THREE.Vector3(0, 0, 1));
-  const tmpPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0));
+  const tmpPlane = useRef(
+    new THREE.Plane(new THREE.Vector3(0, 0, 1), 0),
+  );
   const tmpRay = useRef(new THREE.Raycaster());
   const tmpMouseWorld = useRef(new THREE.Vector3());
 
   useFrame(() => {
-    camera.lookAt(0, 0, 0);
     tmpRay.current.setFromCamera(mouse, camera);
+    // plane facing the camera, passing through heart center
+    const planeNormal = new THREE.Vector3();
+    camera.getWorldDirection(planeNormal).negate();
     tmpPlane.current.setFromNormalAndCoplanarPoint(
-      planeNormal.current,
+      planeNormal,
       new THREE.Vector3(0, 0, 0),
     );
     const hit = new THREE.Vector3();
@@ -168,7 +206,8 @@ function SceneInner({
     const state = heartStateRef.current;
     if (state) {
       state.mouseWorld.copy(tmpMouseWorld.current);
-      state.mouseActive = dimmed ? 0 : tmpMouseWorld.current.length() < 1.4 ? 1 : 0;
+      state.mouseActive =
+        dimmed ? 0 : tmpMouseWorld.current.length() < 1.6 ? 1 : 0;
       state.dim = dimmed ? 1 : 0;
     }
   });
@@ -176,12 +215,12 @@ function SceneInner({
   return (
     <>
       <ambientLight intensity={0.15} color="#3a4a55" />
-      <Heart state={heartStateRef} />
-      {SITES.map((s) => (
+      <Heart cloud={cloud} state={heartStateRef} />
+      {markers.map((m) => (
         <Marker
-          key={s.id}
-          id={s.id}
-          position={s.pos}
+          key={m.id}
+          id={m.id}
+          position={m.position}
           onSelect={onSelect}
           dimmed={dimmed}
         />
@@ -193,13 +232,33 @@ function SceneInner({
 export default function OperatingRoom() {
   const [selected, setSelected] = useState<Site | null>(null);
   const [opened, setOpened] = useState(false);
+  const [cloud, setCloud] = useState<HeartCloud | null>(null);
+  const [markers, setMarkers] = useState<
+    { id: Site; position: THREE.Vector3 }[] | null
+  >(null);
   const heartStateRef = useRef<HeartState>({
     mouseWorld: new THREE.Vector3(0, 0, 100),
     mouseActive: 0,
     dim: 0,
   });
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const cameraHome = useRef(new THREE.Vector3(0, 0, 4.5));
+  const cameraHome = useRef(new THREE.Vector3(0, 0, 5));
+
+  useEffect(() => {
+    let cancelled = false;
+    loadHeartCloud("/heart.stl").then((c) => {
+      if (cancelled) return;
+      setCloud(c);
+      const placed = SITE_ANCHORS.map(({ id, anchor }) => {
+        const [pos] = snapToSurface(c, anchor);
+        return { id, position: pos };
+      });
+      setMarkers(placed);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSelect = (id: Site, worldPos: THREE.Vector3) => {
     setSelected(id);
@@ -246,7 +305,6 @@ export default function OperatingRoom() {
         <span className="text-[var(--od-blue)]">●</span> OR · 04 LIVE
       </div>
 
-      {/* PATIENT card — top right */}
       <div className="absolute top-6 right-6 z-30 text-right max-w-[260px] hud-text">
         <div className="opacity-60 mb-2">PATIENT · M. MAVUDURU</div>
         <div className="text-[0.6rem] leading-relaxed text-[var(--bone)]/85 normal-case tracking-[0.04em] font-display italic mb-3">
@@ -281,7 +339,7 @@ export default function OperatingRoom() {
       </div>
 
       <div className="absolute bottom-6 left-6 hud-text opacity-50 z-30">
-        3 OPERATIVE SITES MARKED
+        DRAG TO ROTATE · 3 SITES MARKED
       </div>
       <div className="absolute bottom-6 right-6 hud-text opacity-50 z-30 text-right">
         SCALPEL · #10 BLADE
@@ -290,22 +348,41 @@ export default function OperatingRoom() {
       </div>
 
       <Canvas
-        camera={{ position: [0, 0, 4.5], fov: 35 }}
+        camera={{ position: [0, 0, 5], fov: 35 }}
         onCreated={({ camera }) => {
           cameraRef.current = camera as THREE.PerspectiveCamera;
           cameraHome.current.copy(camera.position);
         }}
-        gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+        gl={{
+          antialias: true,
+          alpha: true,
+          powerPreference: "high-performance",
+        }}
         dpr={[1, 2]}
         style={{ position: "relative", zIndex: 10 }}
       >
         <CameraFit />
-        <Suspense fallback={null}>
-          <SceneInner
-            heartStateRef={heartStateRef}
-            dimmed={selected !== null}
-            onSelect={handleSelect}
+        {selected === null && (
+          <OrbitControls
+            enableZoom={false}
+            enablePan={false}
+            enableDamping
+            dampingFactor={0.08}
+            rotateSpeed={0.85}
+            minPolarAngle={Math.PI * 0.18}
+            maxPolarAngle={Math.PI * 0.82}
           />
+        )}
+        <Suspense fallback={null}>
+          {cloud && markers && (
+            <SceneInner
+              cloud={cloud}
+              markers={markers}
+              heartStateRef={heartStateRef}
+              dimmed={selected !== null}
+              onSelect={handleSelect}
+            />
+          )}
         </Suspense>
       </Canvas>
 
