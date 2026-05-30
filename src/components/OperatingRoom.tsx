@@ -18,7 +18,7 @@ import {
   EMAIL,
 } from "@/data/content";
 
-const HEART_TARGET_HEIGHT = 3.83;
+const HEART_TARGET_HEIGHT = 5.75;
 const CAMERA_MARGIN = 1.05;
 
 // Anchor targets in STL-local space (after recenter + scale to longest axis = HEART_TARGET_HEIGHT).
