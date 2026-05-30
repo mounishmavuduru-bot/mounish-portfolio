@@ -18,7 +18,7 @@ import {
   EMAIL,
 } from "@/data/content";
 
-const HEART_TARGET_HEIGHT = 3.11;
+const HEART_TARGET_HEIGHT = 3.83;
 const CAMERA_MARGIN = 1.05;
 
 // Anchor targets in STL-local space (after recenter + scale to longest axis = HEART_TARGET_HEIGHT).
@@ -373,7 +373,7 @@ export default function OperatingRoom() {
             dampingFactor={0.08}
             rotateSpeed={0.85}
             autoRotate
-            autoRotateSpeed={0.6}
+            autoRotateSpeed={1.5}
             minPolarAngle={Math.PI * 0.18}
             maxPolarAngle={Math.PI * 0.82}
           />
