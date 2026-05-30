@@ -8,22 +8,31 @@ import * as THREE from "three";
 import gsap from "gsap";
 import Heart, { HeartState } from "./Heart";
 import OperativeField from "./OperativeField";
-import { Site, siteLabels } from "@/data/content";
+import {
+  Site,
+  siteLabels,
+  TAGLINE,
+  GITHUB,
+  LINKEDIN,
+  EMAIL,
+} from "@/data/content";
 
 const SITES: { id: Site; pos: [number, number, number] }[] = [
-  { id: "projects", pos: [0.6, 0.15, 0.95] },
-  { id: "achievements", pos: [-0.7, 0.55, 0.5] },
-  { id: "positions", pos: [0.15, -0.55, 0.9] },
+  { id: "projects", pos: [0.62, 0.18, 0.95] },
+  { id: "achievements", pos: [-0.72, 0.6, 0.5] },
+  { id: "positions", pos: [0.15, -0.58, 0.9] },
 ];
 
 function Marker({
   id,
   position,
   onSelect,
+  dimmed,
 }: {
   id: Site;
   position: [number, number, number];
   onSelect: (id: Site, worldPos: THREE.Vector3) => void;
+  dimmed: boolean;
 }) {
   const [hover, setHover] = useState(false);
   const group = useRef<THREE.Group>(null);
@@ -33,11 +42,12 @@ function Marker({
       <mesh
         onPointerOver={(e) => {
           e.stopPropagation();
-          setHover(true);
+          if (!dimmed) setHover(true);
         }}
         onPointerOut={() => setHover(false)}
         onClick={(e) => {
           e.stopPropagation();
+          if (dimmed) return;
           if (group.current) {
             const wp = new THREE.Vector3();
             group.current.getWorldPosition(wp);
@@ -48,7 +58,16 @@ function Marker({
         <sphereGeometry args={[0.09, 16, 16]} />
         <meshBasicMaterial color="#ffffff" transparent opacity={0} />
       </mesh>
-      <Html center distanceFactor={4.5} zIndexRange={[20, 0]}>
+      <Html
+        center
+        distanceFactor={4.5}
+        zIndexRange={[20, 0]}
+        style={{
+          opacity: dimmed ? 0.15 : 1,
+          transition: "opacity 360ms ease",
+          pointerEvents: dimmed ? "none" : "auto",
+        }}
+      >
         <div
           className="pointer-events-none select-none flex items-center gap-3"
           style={{
@@ -104,15 +123,14 @@ function CameraFit() {
   const { camera, size } = useThree();
   useEffect(() => {
     const persp = camera as THREE.PerspectiveCamera;
-    // fit heart (~1.6 tall, ~1.4 wide after scale) with 24% margin
     const aspect = size.width / size.height;
-    const heartHeight = 1.7;
-    const heartWidth = 1.4;
+    const heartHeight = 2.0;
+    const heartWidth = 1.5;
     const fovRad = (persp.fov * Math.PI) / 180;
     const distForHeight = heartHeight / (2 * Math.tan(fovRad / 2));
     const horizontalFov = 2 * Math.atan(Math.tan(fovRad / 2) * aspect);
     const distForWidth = heartWidth / (2 * Math.tan(horizontalFov / 2));
-    const target = Math.max(distForHeight, distForWidth) * 1.35;
+    const target = Math.max(distForHeight, distForWidth) * 1.25;
     camera.position.z = target;
     camera.updateProjectionMatrix();
   }, [camera, size]);
@@ -123,10 +141,12 @@ function SceneInner({
   onSelect,
   heartStateRef,
   paused,
+  dimmed,
 }: {
   onSelect: (id: Site, worldPos: THREE.Vector3) => void;
   heartStateRef: React.RefObject<HeartState>;
   paused: boolean;
+  dimmed: boolean;
 }) {
   const { camera, mouse } = useThree();
   const planeNormal = useRef(new THREE.Vector3(0, 0, 1));
@@ -136,7 +156,6 @@ function SceneInner({
 
   useFrame(() => {
     camera.lookAt(0, 0, 0);
-    // unproject mouse to plane z=0
     tmpRay.current.setFromCamera(mouse, camera);
     tmpPlane.current.setFromNormalAndCoplanarPoint(
       planeNormal.current,
@@ -150,16 +169,8 @@ function SceneInner({
     const state = heartStateRef.current;
     if (state) {
       state.mouseWorld.copy(tmpMouseWorld.current);
-      const dToHeart = tmpMouseWorld.current.length();
-      const close = dToHeart < 1.2;
-      state.mouseActive = close ? 1 : 0;
-      // BPM 65 (resting) → 130 (close)
-      const targetBpm = THREE.MathUtils.lerp(
-        130,
-        65,
-        THREE.MathUtils.smoothstep(dToHeart, 0.0, 1.5),
-      );
-      state.bpm = THREE.MathUtils.lerp(state.bpm, targetBpm, 0.04);
+      state.mouseActive = dimmed ? 0 : tmpMouseWorld.current.length() < 1.4 ? 1 : 0;
+      state.dim = dimmed ? 1 : 0;
     }
   });
 
@@ -168,7 +179,13 @@ function SceneInner({
       <ambientLight intensity={0.15} color="#3a4a55" />
       <Heart state={heartStateRef} paused={paused} />
       {SITES.map((s) => (
-        <Marker key={s.id} id={s.id} position={s.pos} onSelect={onSelect} />
+        <Marker
+          key={s.id}
+          id={s.id}
+          position={s.pos}
+          onSelect={onSelect}
+          dimmed={dimmed}
+        />
       ))}
     </>
   );
@@ -180,7 +197,7 @@ export default function OperatingRoom() {
   const heartStateRef = useRef<HeartState>({
     mouseWorld: new THREE.Vector3(0, 0, 100),
     mouseActive: 0,
-    bpm: 65,
+    dim: 0,
   });
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const cameraHome = useRef(new THREE.Vector3(0, 0, 4.5));
@@ -191,8 +208,8 @@ export default function OperatingRoom() {
     if (cam) {
       cameraHome.current.copy(cam.position);
       const dir = worldPos.clone().normalize();
-      const target = worldPos.clone().add(dir.multiplyScalar(0.9));
-      target.z = Math.max(target.z, 1.6);
+      const target = worldPos.clone().add(dir.multiplyScalar(0.7));
+      target.z = Math.max(target.z, 1.8);
       gsap.to(cam.position, {
         x: target.x,
         y: target.y,
@@ -228,13 +245,41 @@ export default function OperatingRoom() {
       <div className="absolute top-6 left-6 hud-text opacity-60 z-30">
         <span className="text-[var(--od-blue)]">●</span> OR · 04 LIVE
       </div>
-      <div className="absolute top-6 right-6 hud-text opacity-60 z-30 text-right">
-        PATIENT · M. MAVUDURU
-        <br />
-        <span className="opacity-70">
-          <BpmDisplay state={heartStateRef} />
-        </span>
+
+      {/* PATIENT card — top right */}
+      <div className="absolute top-6 right-6 z-30 text-right max-w-[260px] hud-text">
+        <div className="opacity-60 mb-2">PATIENT · M. MAVUDURU</div>
+        <div className="text-[0.6rem] leading-relaxed text-[var(--bone)]/85 normal-case tracking-[0.04em] font-display italic mb-3">
+          {TAGLINE}
+        </div>
+        <div className="flex items-center justify-end gap-3 text-[0.58rem] opacity-80">
+          <a
+            href={GITHUB}
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-[var(--od-blue-hot)] transition-colors"
+          >
+            GitHub
+          </a>
+          <span className="opacity-40">·</span>
+          <a
+            href={LINKEDIN}
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-[var(--od-blue-hot)] transition-colors"
+          >
+            LinkedIn
+          </a>
+          <span className="opacity-40">·</span>
+          <a
+            href={`mailto:${EMAIL}`}
+            className="hover:text-[var(--od-blue-hot)] transition-colors"
+          >
+            Email
+          </a>
+        </div>
       </div>
+
       <div className="absolute bottom-6 left-6 hud-text opacity-50 z-30">
         3 OPERATIVE SITES MARKED
       </div>
@@ -259,6 +304,7 @@ export default function OperatingRoom() {
           <SceneInner
             heartStateRef={heartStateRef}
             paused={selected !== null}
+            dimmed={selected !== null}
             onSelect={handleSelect}
           />
         </Suspense>
@@ -269,15 +315,4 @@ export default function OperatingRoom() {
       )}
     </div>
   );
-}
-
-function BpmDisplay({ state }: { state: React.RefObject<HeartState> }) {
-  const [bpm, setBpm] = useState(65);
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (state.current) setBpm(Math.round(state.current.bpm));
-    }, 200);
-    return () => clearInterval(id);
-  }, [state]);
-  return <span>BPM {bpm}</span>;
 }

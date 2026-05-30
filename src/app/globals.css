@@ -146,3 +146,40 @@ body {
   background: var(--od-blue);
   color: var(--bg);
 }
+
+/* Operative Field cards — fade + lift in stagger */
+@keyframes ofCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) translateZ(0px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) translateZ(20px);
+  }
+}
+.of-card {
+  position: relative;
+  padding: 14px 18px;
+  border: 1px solid rgba(255, 200, 200, 0.18);
+  background: linear-gradient(180deg, rgba(255, 240, 230, 0.06), rgba(60, 10, 12, 0.45));
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-radius: 2px;
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 220, 200, 0.12);
+  opacity: 0;
+  transform: translateY(14px);
+  animation: ofCardIn 600ms cubic-bezier(.16,.84,.32,1) forwards;
+}
+.of-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: linear-gradient(180deg, transparent, #ff9a9a, transparent);
+  opacity: 0.6;
+}

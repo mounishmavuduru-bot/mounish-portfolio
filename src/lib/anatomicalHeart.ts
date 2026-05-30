@@ -3,27 +3,20 @@ import * as THREE from "three";
 /**
  * Anatomical heart point cloud generator.
  *
- * Builds a heart by sampling points across multiple anatomical primitives:
- *   0 = Left Ventricle (LV) — posterior-dominant muscular mass, apex bottom
- *   1 = Right Ventricle (RV) — anterior, wraps LV on patient's right
- *   2 = Left Atrium (LA) — superior-posterior
- *   3 = Right Atrium (RA) — superior-anterior right
- *   4 = Aorta — arch over the great vessels
- *   5 = Pulmonary trunk / SVC — superior vessels
+ * Builds a heart by sampling points across multiple anatomical primitives.
+ * Regions:
+ *   0 = Left Ventricle (LV)
+ *   1 = Right Ventricle (RV)
+ *   2 = Left Atrium (LA)
+ *   3 = Right Atrium (RA)
+ *   4 = Aorta (arch + brachiocephalic + L common carotid + L subclavian)
+ *   5 = Pulmonary trunk / SVC / IVC
  *
- * Orientation (viewer = front of patient, "anterior view"):
- *   +X = patient left   |   +Y = superior   |   +Z = anterior (toward viewer)
+ * Orientation (anterior view of patient):
+ *   +X = patient's left   |   +Y = superior   |   +Z = anterior (toward viewer)
  */
 
 export const REGION_COUNT = 6;
-export const REGION_NAMES = [
-  "Left Ventricle",
-  "Right Ventricle",
-  "Left Atrium",
-  "Right Atrium",
-  "Aorta",
-  "Pulmonary Trunk",
-];
 
 type Sample = { p: THREE.Vector3; n: THREE.Vector3 };
 
@@ -51,7 +44,34 @@ function sampleEllipsoid(
   return { p, n };
 }
 
-/** sample on a partial torus arc lying in a plane defined by quaternion */
+/** sample on a pointed cone (apex). t=0 at apex, t=1 at base */
+function sampleConeApex(
+  apex: THREE.Vector3,
+  baseCenter: THREE.Vector3,
+  baseRadius: number,
+): Sample {
+  const t = Math.sqrt(Math.random());
+  const theta = 2 * Math.PI * Math.random();
+
+  const axis = baseCenter.clone().sub(apex);
+  const helper =
+    Math.abs(axis.clone().normalize().y) < 0.95
+      ? new THREE.Vector3(0, 1, 0)
+      : new THREE.Vector3(1, 0, 0);
+  const perpA = new THREE.Vector3().crossVectors(axis, helper).normalize();
+  const perpB = new THREE.Vector3().crossVectors(axis, perpA).normalize();
+  const r = t * baseRadius;
+  const off = perpA
+    .clone()
+    .multiplyScalar(Math.cos(theta) * r)
+    .addScaledVector(perpB, Math.sin(theta) * r);
+
+  const p = apex.clone().addScaledVector(axis, t).add(off);
+  const n = off.clone().normalize();
+  if (n.lengthSq() === 0) n.copy(axis).normalize();
+  return { p, n };
+}
+
 function sampleTorusArc(
   center: THREE.Vector3,
   majorR: number,
@@ -88,13 +108,15 @@ function sampleCylinder(
   start: THREE.Vector3,
   end: THREE.Vector3,
   radius: number,
+  taperEnd?: number,
 ): Sample {
   const axis = end.clone().sub(start);
   const height = axis.length();
   axis.normalize();
   const t = Math.random() * height;
+  const taper = taperEnd ?? 1;
+  const r = THREE.MathUtils.lerp(radius, radius * taper, t / height);
 
-  // build basis
   const helper =
     Math.abs(axis.y) < 0.95
       ? new THREE.Vector3(0, 1, 0)
@@ -105,8 +127,8 @@ function sampleCylinder(
   const theta = 2 * Math.PI * Math.random();
   const off = perpA
     .clone()
-    .multiplyScalar(Math.cos(theta) * radius)
-    .addScaledVector(perpB, Math.sin(theta) * radius);
+    .multiplyScalar(Math.cos(theta) * r)
+    .addScaledVector(perpB, Math.sin(theta) * r);
 
   const p = start.clone().addScaledVector(axis, t).add(off);
   const n = off.clone().normalize();
@@ -124,92 +146,162 @@ function organicNoise(p: THREE.Vector3, amp: number): number {
 interface PrimitiveSpec {
   region: number;
   weight: number;
+  noiseAmp?: number;
   sample: () => Sample;
 }
 
 function buildPrimitives(): PrimitiveSpec[] {
-  // Anatomy (units roughly correspond to ~10cm heart = 1.0 unit total height)
-  const LV_CENTER = new THREE.Vector3(0.08, -0.18, 0.0);
-  const LV_RADII = new THREE.Vector3(0.42, 0.58, 0.46);
-  // slight forward tilt so apex points down-left-anterior
-  const LV_ROT = new THREE.Quaternion().setFromEuler(
+  /* Anatomy notes (matched to anterior-view reference):
+     - LV dominates posterior-left; apex points down-left, slightly anterior
+     - RV is anterior, drapes over LV on the patient's right
+     - Atria sit superior; LA posterior, RA anterior-right
+     - Aortic arch ascends from LV outflow, curves left & posterior
+     - Brachiocephalic, L common carotid, L subclavian rise as 3 stubs off arch
+     - Pulmonary trunk rises from RV, slightly left
+     - SVC rises from RA; IVC stub descends from RA bottom
+  */
+
+  // ---- LEFT VENTRICLE — main body (ellipsoid) + apex cone ----
+  const LV_BODY_CENTER = new THREE.Vector3(0.08, -0.15, 0.0);
+  const LV_BODY_RADII = new THREE.Vector3(0.4, 0.42, 0.42);
+  const LV_BODY_ROT = new THREE.Quaternion().setFromEuler(
     new THREE.Euler(-0.18, 0.0, -0.22),
   );
+  const LV_APEX = new THREE.Vector3(-0.08, -0.78, 0.08);
+  const LV_APEX_BASE = new THREE.Vector3(0.06, -0.22, 0.03);
 
-  const RV_CENTER = new THREE.Vector3(-0.32, -0.05, 0.18);
-  const RV_RADII = new THREE.Vector3(0.34, 0.5, 0.34);
+  // ---- RIGHT VENTRICLE — drapes anterior of LV ----
+  const RV_CENTER = new THREE.Vector3(-0.3, -0.05, 0.22);
+  const RV_RADII = new THREE.Vector3(0.32, 0.45, 0.32);
   const RV_ROT = new THREE.Quaternion().setFromEuler(
-    new THREE.Euler(-0.15, 0.1, 0.25),
+    new THREE.Euler(-0.15, 0.1, 0.28),
   );
 
-  const LA_CENTER = new THREE.Vector3(0.18, 0.48, -0.18);
-  const LA_RADII = new THREE.Vector3(0.28, 0.22, 0.3);
+  // ---- LEFT ATRIUM (posterior-superior) ----
+  const LA_CENTER = new THREE.Vector3(0.16, 0.45, -0.22);
+  const LA_RADII = new THREE.Vector3(0.28, 0.24, 0.3);
 
-  const RA_CENTER = new THREE.Vector3(-0.38, 0.42, 0.05);
-  const RA_RADII = new THREE.Vector3(0.3, 0.28, 0.28);
+  // ---- RIGHT ATRIUM (anterior-superior right) ----
+  const RA_CENTER = new THREE.Vector3(-0.36, 0.4, 0.05);
+  const RA_RADII = new THREE.Vector3(0.32, 0.3, 0.3);
 
-  // Aorta arch — rises from LV outflow, curves rightward then descends
-  const AORTA_CENTER = new THREE.Vector3(0.0, 0.7, -0.05);
-  const AORTA_MAJOR = 0.32;
-  const AORTA_MINOR = 0.085;
-  // rotate so torus lies in the saggital-superior plane, opening upward
+  // ---- AORTIC ROOT (small bulb above LV) ----
+  const AORTIC_ROOT_CENTER = new THREE.Vector3(0.0, 0.32, 0.05);
+  const AORTIC_ROOT_RADII = new THREE.Vector3(0.13, 0.12, 0.13);
+
+  // ---- AORTIC ARCH (torus) ----
+  const AORTA_CENTER = new THREE.Vector3(0.05, 0.78, -0.05);
+  const AORTA_MAJOR = 0.36;
+  const AORTA_MINOR = 0.09;
   const AORTA_ROT = new THREE.Quaternion().setFromEuler(
-    new THREE.Euler(Math.PI / 2, 0, -0.25),
+    new THREE.Euler(Math.PI / 2, 0, -0.18),
   );
 
-  // Pulmonary trunk — rises from RV anterior, bifurcates to left
-  const PT_START = new THREE.Vector3(-0.22, 0.45, 0.28);
-  const PT_END = new THREE.Vector3(-0.45, 1.02, 0.05);
-  const PT_RADIUS = 0.09;
+  // ---- BRACHIOCEPHALIC TRUNK (most anterior, rises up-right then bifurcates) ----
+  const BC_START = new THREE.Vector3(-0.22, 0.92, -0.05);
+  const BC_END = new THREE.Vector3(-0.3, 1.32, 0.02);
+  const BC_RADIUS = 0.07;
 
-  // SVC — vertical superior from RA
-  const SVC_START = new THREE.Vector3(-0.35, 0.62, 0.12);
-  const SVC_END = new THREE.Vector3(-0.32, 1.1, 0.05);
-  const SVC_RADIUS = 0.08;
+  // ---- LEFT COMMON CAROTID (middle stub) ----
+  const LCC_START = new THREE.Vector3(0.02, 0.96, -0.08);
+  const LCC_END = new THREE.Vector3(0.04, 1.38, -0.05);
+  const LCC_RADIUS = 0.055;
+
+  // ---- LEFT SUBCLAVIAN (most posterior stub) ----
+  const LSA_START = new THREE.Vector3(0.22, 0.92, -0.18);
+  const LSA_END = new THREE.Vector3(0.3, 1.28, -0.2);
+  const LSA_RADIUS = 0.055;
+
+  // ---- PULMONARY TRUNK (rises from RV, leftward & posterior) ----
+  const PT_START = new THREE.Vector3(-0.18, 0.4, 0.3);
+  const PT_END = new THREE.Vector3(-0.38, 0.78, 0.05);
+  const PT_RADIUS = 0.1;
+
+  // ---- SVC (superior vena cava — drops into RA from above) ----
+  const SVC_START = new THREE.Vector3(-0.4, 0.55, 0.12);
+  const SVC_END = new THREE.Vector3(-0.38, 1.05, 0.08);
+  const SVC_RADIUS = 0.082;
+
+  // ---- IVC stub (short, off RA bottom) ----
+  const IVC_START = new THREE.Vector3(-0.3, 0.1, 0.05);
+  const IVC_END = new THREE.Vector3(-0.3, -0.15, 0.0);
+  const IVC_RADIUS = 0.085;
 
   return [
     {
       region: 0,
-      weight: 1.4,
-      sample: () => sampleEllipsoid(LV_CENTER, LV_RADII, LV_ROT),
+      weight: 1.5,
+      sample: () => sampleEllipsoid(LV_BODY_CENTER, LV_BODY_RADII, LV_BODY_ROT),
+    },
+    {
+      region: 0,
+      weight: 0.6,
+      noiseAmp: 0.012,
+      sample: () => sampleConeApex(LV_APEX, LV_APEX_BASE, 0.34),
     },
     {
       region: 1,
-      weight: 0.95,
+      weight: 1.05,
       sample: () => sampleEllipsoid(RV_CENTER, RV_RADII, RV_ROT),
     },
     {
       region: 2,
-      weight: 0.5,
+      weight: 0.55,
       sample: () => sampleEllipsoid(LA_CENTER, LA_RADII),
     },
     {
       region: 3,
-      weight: 0.55,
+      weight: 0.62,
       sample: () => sampleEllipsoid(RA_CENTER, RA_RADII),
     },
     {
       region: 4,
-      weight: 0.55,
+      weight: 0.22,
+      sample: () =>
+        sampleEllipsoid(AORTIC_ROOT_CENTER, AORTIC_ROOT_RADII),
+    },
+    {
+      region: 4,
+      weight: 0.78,
       sample: () =>
         sampleTorusArc(
           AORTA_CENTER,
           AORTA_MAJOR,
           AORTA_MINOR,
-          Math.PI * 0.1,
-          Math.PI * 0.95,
+          Math.PI * 0.08,
+          Math.PI * 0.98,
           AORTA_ROT,
         ),
     },
     {
-      region: 5,
-      weight: 0.35,
-      sample: () => sampleCylinder(PT_START, PT_END, PT_RADIUS),
+      region: 4,
+      weight: 0.32,
+      sample: () => sampleCylinder(BC_START, BC_END, BC_RADIUS, 0.7),
+    },
+    {
+      region: 4,
+      weight: 0.25,
+      sample: () => sampleCylinder(LCC_START, LCC_END, LCC_RADIUS, 0.85),
+    },
+    {
+      region: 4,
+      weight: 0.25,
+      sample: () => sampleCylinder(LSA_START, LSA_END, LSA_RADIUS, 0.85),
     },
     {
       region: 5,
-      weight: 0.3,
-      sample: () => sampleCylinder(SVC_START, SVC_END, SVC_RADIUS),
+      weight: 0.42,
+      sample: () => sampleCylinder(PT_START, PT_END, PT_RADIUS, 0.95),
+    },
+    {
+      region: 5,
+      weight: 0.32,
+      sample: () => sampleCylinder(SVC_START, SVC_END, SVC_RADIUS, 0.95),
+    },
+    {
+      region: 5,
+      weight: 0.2,
+      sample: () => sampleCylinder(IVC_START, IVC_END, IVC_RADIUS, 1),
     },
   ];
 }
@@ -220,7 +312,7 @@ export interface HeartCloud {
   pointCount: number;
 }
 
-export function buildHeartCloud(count = 6000): HeartCloud {
+export function buildHeartCloud(count = 14000): HeartCloud {
   const prims = buildPrimitives();
   const totalWeight = prims.reduce((s, p) => s + p.weight, 0);
 
@@ -237,10 +329,10 @@ export function buildHeartCloud(count = 6000): HeartCloud {
   let written = 0;
   for (const prim of prims) {
     const portion = Math.round((prim.weight / totalWeight) * count);
+    const amp = prim.noiseAmp ?? 0.018;
     for (let i = 0; i < portion && written < count; i++) {
       const { p, n } = prim.sample();
-      // organic noise — small radial perturbation
-      const nudge = organicNoise(p, 0.02);
+      const nudge = organicNoise(p, amp);
       p.addScaledVector(n, nudge);
 
       positions[written * 3] = p.x;
