@@ -19,16 +19,29 @@ export interface PointerState {
   active: boolean;
 }
 
-/** Spring stiffness toward target. */
-const SPRING_K = 26;
-/** Velocity damping rate (per second, applied exponentially). */
-const DAMPING = 6.5;
-/** Pointer influence radius in world units. */
-const POINTER_RADIUS = 1.5;
-/** Radial push strength inside the pointer radius. */
-const PUSH_STRENGTH = 26;
-/** Fraction of the pointer's velocity injected into nearby particles. */
-const VELOCITY_CARRY = 0.55;
+/**
+ * Tunable physics parameters. Every field is optional; omitted fields fall back
+ * to the ORGAN_WORLD=9 defaults below so existing callers behave unchanged.
+ */
+export interface SimOpts {
+  /** Spring stiffness toward target. */
+  springK?: number;
+  /** Velocity damping rate (per second, applied exponentially). */
+  damping?: number;
+  /** Pointer influence radius in world units. */
+  pointerRadius?: number;
+  /** Radial push strength inside the pointer radius. */
+  pointerStrength?: number;
+  /** Fraction of the pointer's velocity injected into nearby particles. */
+  pointerVel?: number;
+}
+
+/** Defaults tuned for ORGAN_WORLD = 9 (large, immersive specimen). */
+const DEFAULT_SPRING_K = 24;
+const DEFAULT_DAMPING = 6.5;
+const DEFAULT_POINTER_RADIUS = 2.2;
+const DEFAULT_POINTER_STRENGTH = 34;
+const DEFAULT_POINTER_VEL = 0.6;
 /** Maximum integration step; larger frames are clamped, not subdivided. */
 const MAX_DT = 0.033;
 
@@ -40,11 +53,23 @@ export class ParticleSim {
   private readonly velocities: Float32Array;
   private readonly targets: Float32Array;
 
-  constructor(count: number) {
+  private readonly springK: number;
+  private readonly damping: number;
+  private readonly pointerRadius: number;
+  private readonly pointerStrength: number;
+  private readonly pointerVel: number;
+
+  constructor(count: number, opts?: SimOpts) {
     this.count = count;
     this.positions = new Float32Array(count * 3);
     this.velocities = new Float32Array(count * 3);
     this.targets = new Float32Array(count * 3);
+
+    this.springK = opts?.springK ?? DEFAULT_SPRING_K;
+    this.damping = opts?.damping ?? DEFAULT_DAMPING;
+    this.pointerRadius = opts?.pointerRadius ?? DEFAULT_POINTER_RADIUS;
+    this.pointerStrength = opts?.pointerStrength ?? DEFAULT_POINTER_STRENGTH;
+    this.pointerVel = opts?.pointerVel ?? DEFAULT_POINTER_VEL;
   }
 
   /**
@@ -62,10 +87,10 @@ export class ParticleSim {
 
   /**
    * Advance the simulation. Per particle:
-   * 1. spring acceleration k * (target - pos), k = 26
-   * 2. exponential damping: vel *= exp(-6.5 * dt)
-   * 3. pointer force within radius 1.5: radial push (26 * smooth falloff)
-   *    plus 0.55 * pointer velocity scaled by the same falloff
+   * 1. spring acceleration springK * (target - pos)
+   * 2. exponential damping: vel *= exp(-damping * dt)
+   * 3. pointer force within pointerRadius: radial push (pointerStrength * smooth
+   *    falloff) plus pointerVel * pointer velocity scaled by the same falloff
    * 4. integrate velocity, then position
    */
   update(dt: number, pointer: PointerState): void {
@@ -77,9 +102,10 @@ export class ParticleSim {
     const tgt = this.targets;
     const n = this.count * 3;
 
-    const damp = Math.exp(-DAMPING * dt);
-    const pushDt = PUSH_STRENGTH * dt;
-    const carryDt = VELOCITY_CARRY * dt;
+    const springK = this.springK;
+    const damp = Math.exp(-this.damping * dt);
+    const pushDt = this.pointerStrength * dt;
+    const carryDt = this.pointerVel * dt;
 
     const pointerActive = pointer.active;
     const px = pointer.x;
@@ -88,7 +114,7 @@ export class ParticleSim {
     const pvx = pointer.vx;
     const pvy = pointer.vy;
     const pvz = pointer.vz;
-    const r = POINTER_RADIUS;
+    const r = this.pointerRadius;
     const r2 = r * r;
 
     for (let i = 0; i < n; i += 3) {
@@ -97,9 +123,9 @@ export class ParticleSim {
       let z = pos[i + 2];
 
       // 1. spring toward target
-      let vx = vel[i] + SPRING_K * (tgt[i] - x) * dt;
-      let vy = vel[i + 1] + SPRING_K * (tgt[i + 1] - y) * dt;
-      let vz = vel[i + 2] + SPRING_K * (tgt[i + 2] - z) * dt;
+      let vx = vel[i] + springK * (tgt[i] - x) * dt;
+      let vy = vel[i + 1] + springK * (tgt[i + 1] - y) * dt;
+      let vz = vel[i + 2] + springK * (tgt[i + 2] - z) * dt;
 
       // 2. exponential damping
       vx *= damp;

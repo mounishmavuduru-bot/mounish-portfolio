@@ -5,9 +5,8 @@
   --bone: #e8e3d8;
   --blood: #a61b1b;
   --green: #36c97c;
-  /* next/font variables live on <html>; alias them here so components
-     can use var(--font-mono) / var(--font-display) directly. */
-  --font-mono: var(--font-plex);
+  /* next/font sets --font-fraunces and --font-mono on <html>; alias the
+     display face here so components can use var(--font-display) directly. */
   --font-display: var(--font-fraunces);
 }
 
@@ -17,15 +16,14 @@
   --color-bone: var(--bone);
   --color-blood: var(--blood);
   --color-trace: var(--green);
-  --font-mono: var(--font-plex);
-  --font-display: var(--font-fraunces);
+  --font-display: var(--font-fraunces), serif;
 }
 
 html,
 body {
   background: var(--black);
   color: var(--bone);
-  font-family: var(--font-plex), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   -webkit-font-smoothing: antialiased;
 }
 

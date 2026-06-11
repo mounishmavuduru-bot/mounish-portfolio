@@ -43,3 +43,6 @@ next-env.d.ts
 .firecrawl/
 agentdb.rvf
 agentdb.rvf.lock
+
+assets/stl/
+.tc_specimen_check/
