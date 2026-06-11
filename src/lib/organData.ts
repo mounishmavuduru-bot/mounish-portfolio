@@ -10,10 +10,10 @@
 
 import type { Site } from "@/data/content";
 
-/** Points baked into every .bin file (per-organ). */
-export const BAKED_COUNT = 30000;
+/** Points baked into every .bin file (per-organ): 42000 * 3 floats each. */
+export const BAKED_COUNT = 42000;
 /** Reduced count used on mobile (prefix slice of the baked cloud). */
-export const MOBILE_COUNT = 15000;
+export const MOBILE_COUNT = 21000;
 /** Longest axis in world units after load-scale (large / immersive). */
 export const ORGAN_WORLD = 9.0;
 

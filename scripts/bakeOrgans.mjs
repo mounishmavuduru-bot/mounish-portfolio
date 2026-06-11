@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 
-const COUNT = 30000;
+const COUNT = 42000;
 const ORGANS = [
   { id: "heart", src: "assets/stl/heart.stl" },
   { id: "brain", src: "assets/stl/brain.stl" },

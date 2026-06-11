@@ -2,18 +2,24 @@
 
 import type { JSX } from "react";
 import { useEffect, useRef, useState } from "react";
+import { pointer } from "@/lib/sceneStore";
 
-const HEIGHT = 74; // css px
-const SPEED = 120; // css px/sec, right-to-left
+// Slim standalone EKG band fixed to the very top of the viewport. It reads the
+// shared `pointer` channel (written by PointerBridge) for all four cursor
+// interactions; it owns no pointer listeners of its own. pointer-events-none so
+// it never intercepts clicks meant for the specimen beneath it.
+
+const HEIGHT = 46; // css px — slim, per contract
+const SPEED = 130; // css px/sec, scroll right → left
 const GREEN = "#36c97c";
-const DECAY = "rgba(7, 8, 8, 0.09)";
-const BONE = "rgba(232, 227, 216, 0.6)";
+const DECAY = "rgba(7, 8, 8, 0.10)"; // per-frame phosphor fade toward --black
+const BONE = "rgba(232, 227, 216, 0.55)";
 const MONO =
   'var(--font-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace';
 
 const HR_BASE = 64; // resting bpm
-const HR_MAX = 88; // excited bpm under an active cursor
-const CALIPER_GAP = 80; // css px between the two caliper lines
+const HR_MAX = 92; // excited bpm under a fast cursor
+const CALIPER_GAP = 76; // css px between the two caliper lines
 
 /** Synthetic PQRST as a function of beat phase [0,1). Returns relative amplitude. */
 function pqrst(phase: number): number {
@@ -37,17 +43,17 @@ function pvc(phase: number): number {
     return Math.exp(-d * d);
   };
   return (
-    1.5 * bump(0.3, 0.05) - // wide tall R'
+    1.55 * bump(0.3, 0.05) - // wide tall R'
     0.55 * bump(0.42, 0.06) // deep discordant T
   );
 }
 
-export default function EcgStrip(): JSX.Element {
+export default function EkgMonitor(): JSX.Element {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  // caliper x within the strip (css px), null when cursor is outside the band
+  // caliper x within the band (css px), null when the cursor is not over the band
   const [caliper, setCaliper] = useState<number | null>(null);
-  // live HR readout for the bottom-left text
+  // live HR readout for the corner text
   const [hrText, setHrText] = useState(HR_BASE);
 
   useEffect(() => {
@@ -64,49 +70,18 @@ export default function EcgStrip(): JSX.Element {
     let scrollCarry = 0; // fractional device px not yet scrolled
     let wavePhase = 0; // accumulated beat phase, advanced by live HR
 
-    // ---- live global pointer state (read, never captured) -----------------
-    let ptrX = -1; // css px, viewport space; -1 = unknown
-    let ptrInBand = false; // pointer within the strip's vertical band
-    let ptrSpeed = 0; // px/sec smoothed
-    let lastPtrX = -1;
-    let lastPtrY = -1;
-    let lastPtrTs = 0;
-    let hr = HR_BASE; // eased bpm driving the waveform
+    // ---- derived cursor dynamics (all read from the global pointer channel) -
+    let hr = HR_BASE; // eased bpm actually driving the waveform
     let excite = 0; // 0..1, decays toward 0 when the cursor is calm
+    let speedSmoothed = 0; // px/sec, eased from pointer.vx/vy magnitude
 
-    // Ectopic beat injected on click. The complex is painted into the phosphor
-    // at the right edge during the frames its phase window is drawn, then lives
-    // in pixels and scrolls left like the rest of the trace — it is not
-    // re-evaluated as it travels. pvcAt is a single scalar; the guard below
-    // retires it once it can no longer be painted, so it never accumulates.
+    // (c) ectopic beat injected on every global pointerdown. We watch the shared
+    // `pointer.down` for a rising edge. The complex is painted into the phosphor
+    // at the right edge as its phase window scrolls past, then lives in pixels —
+    // it is not re-evaluated as it travels. pvcAt is a single scalar; the guard
+    // below retires it so it never accumulates.
     let pvcAt = -1; // beat-phase value where the PVC sits; -1 = none
-
-    const bandTop = () => window.innerHeight - HEIGHT;
-
-    const onPointerMove = (e: PointerEvent) => {
-      const now = e.timeStamp || performance.now();
-      ptrX = e.clientX;
-      ptrInBand = e.clientY >= bandTop();
-      if (lastPtrTs > 0) {
-        const dt = (now - lastPtrTs) / 1000;
-        if (dt > 0) {
-          const dx = e.clientX - lastPtrX;
-          const dy = e.clientY - lastPtrY;
-          const inst = Math.hypot(dx, dy) / dt;
-          ptrSpeed = ptrSpeed * 0.8 + inst * 0.2;
-        }
-      }
-      lastPtrX = e.clientX;
-      lastPtrY = e.clientY;
-      lastPtrTs = now;
-    };
-
-    const onPointerDown = (e: PointerEvent) => {
-      // only fire an ectopic when the press lands over the strip's band, so
-      // clicks elsewhere on the page don't inject beats
-      if (e.clientY < bandTop()) return;
-      pvcAt = wavePhase;
-    };
+    let prevDown = false;
 
     const resize = () => {
       dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
@@ -116,13 +91,15 @@ export default function EcgStrip(): JSX.Element {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     };
 
-    // amplitude swell — gaussian centered on the cursor x, in device px
+    // (a) amplitude swell — gaussian centered on the cursor x, in device px, so
+    // a travelling deflection follows pointer.x across the trace.
     const swellAt = (xDev: number): number => {
-      if (ptrX < 0) return 1;
-      const cx = ptrX * dpr;
-      const sigma = 90 * dpr;
+      const cx = pointer.x * dpr;
+      const sigma = 95 * dpr;
       const d = (xDev - cx) / sigma;
-      return 1 + 0.7 * Math.exp(-d * d);
+      // a touch stronger while the cursor is right over the band
+      const lift = pointer.overEkg ? 0.85 : 0.55;
+      return 1 + lift * Math.exp(-d * d);
     };
 
     const frame = (ts: number) => {
@@ -138,15 +115,21 @@ export default function EcgStrip(): JSX.Element {
       const w = canvas.width;
       const h = canvas.height;
 
-      // ---- HR dynamics: rise with cursor activity, ease back when calm -----
-      const movePush = Math.min(1, ptrSpeed / 900);
-      const target = ptrInBand ? 1 : 0.55 * movePush;
+      // rising-edge detection on the shared pointer button → inject ectopic
+      if (pointer.down && !prevDown) pvcAt = wavePhase;
+      prevDown = pointer.down;
+
+      // ---- (b) HR dynamics: rise with cursor SPEED, ease back when calm ------
+      const instSpeed = Math.hypot(pointer.vx, pointer.vy);
+      speedSmoothed += (instSpeed - speedSmoothed) * Math.min(1, dt * 6);
+      const movePush = Math.min(1, speedSmoothed / 1100);
+      const target = pointer.overEkg ? Math.max(0.5, movePush) : movePush;
       excite += (target - excite) * Math.min(1, dt * 3);
-      ptrSpeed *= Math.max(0, 1 - dt * 2.4); // bleed speed when no new moves
       const hrTarget = HR_BASE + (HR_MAX - HR_BASE) * excite;
       hr += (hrTarget - hr) * Math.min(1, dt * 2.2);
 
-      // advance waveform by live HR (cycles/sec = hr/60)
+      // advance the waveform by the live HR (cycles/sec = hr/60) — so the beat
+      // period genuinely follows the readout
       const beatsPerSec = hr / 60;
       wavePhase += beatsPerSec * dt;
 
@@ -159,17 +142,17 @@ export default function EcgStrip(): JSX.Element {
       ctx.drawImage(canvas, -shift, 0);
       ctx.fillStyle = "#070808";
       ctx.fillRect(w - shift, 0, shift, h);
-      // phosphor decay
+      // phosphor decay over the whole band
       ctx.fillStyle = DECAY;
       ctx.fillRect(0, 0, w, h);
 
-      const baseline = h * 0.6;
-      const amp = h * 0.42;
-      // beats per device px (so we can read phase backward across the segment)
+      const baseline = h * 0.56;
+      const amp = h * 0.4;
+      // beats per device px (so we can read phase backward across the new segment)
       const beatsPerDevPx = beatsPerSec / (SPEED * dpr);
 
       ctx.strokeStyle = GREEN;
-      ctx.lineWidth = 1.5 * dpr;
+      ctx.lineWidth = 1.4 * dpr;
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
       ctx.beginPath();
@@ -189,24 +172,23 @@ export default function EcgStrip(): JSX.Element {
       }
       ctx.stroke();
 
-      // retire the PVC once its phase window can no longer be painted (it has
-      // already been drawn into the phosphor; this just frees the scalar)
+      // retire the PVC once its phase window can no longer be painted (already
+      // baked into the phosphor; this just frees the scalar so it never grows)
       if (pvcAt >= 0) {
         const beatsAcross = (w / dpr / SPEED) * beatsPerSec;
         if (wavePhase - pvcAt > beatsAcross + 1) pvcAt = -1;
       }
 
-      // push HR readout to React (rounded; only when it changes)
+      // push the HR readout to React (rounded; only when it changes)
       const rounded = Math.round(hr);
       setHrText((prev) => (prev === rounded ? prev : rounded));
 
-      // caliper visibility follows the in-band pointer
-      if (ptrInBand && ptrX >= 0) {
+      // (d) calipers — only while the shared channel reports the cursor over the
+      // band. wrap is full-width fixed at the top, so band-local x ≈ pointer.x.
+      if (pointer.overEkg) {
         const rect = wrap.getBoundingClientRect();
-        setCaliper((prev) => {
-          const next = ptrX - rect.left;
-          return prev === next ? prev : next;
-        });
+        const next = pointer.x - rect.left;
+        setCaliper((prev) => (prev === next ? prev : next));
       } else {
         setCaliper((prev) => (prev === null ? prev : null));
       }
@@ -231,51 +213,47 @@ export default function EcgStrip(): JSX.Element {
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
-    window.addEventListener("pointermove", onPointerMove, { passive: true });
-    window.addEventListener("pointerdown", onPointerDown, { passive: true });
     document.addEventListener("visibilitychange", onVisibility);
     if (!document.hidden) start();
 
     return () => {
       stop();
       ro.disconnect();
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 
-  // delta between calipers in ms, from the fixed pixel gap and scroll speed
+  // delta between calipers in ms, from the fixed pixel gap and the scroll speed
   const deltaMs = Math.round((CALIPER_GAP / SPEED) * 1000);
 
   return (
     <div
       ref={wrapRef}
       aria-hidden="true"
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-30 overflow-hidden"
+      className="pointer-events-none fixed inset-x-0 top-0 z-30 overflow-hidden"
       style={{
         height: HEIGHT,
-        borderTop: "1px solid rgba(232, 227, 216, 0.08)",
+        borderBottom: "1px solid rgba(232, 227, 216, 0.08)",
       }}
     >
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
-      {/* heart-rate readout, bottom-left */}
+      {/* heart-rate readout, top-right */}
       <span
         className="absolute"
         style={{
-          left: 12,
-          bottom: 8,
+          right: 12,
+          top: 8,
           fontFamily: MONO,
-          fontSize: "0.62rem",
-          letterSpacing: "0.08em",
+          fontSize: "0.6rem",
+          letterSpacing: "0.1em",
           color: "color-mix(in srgb, var(--green) 60%, transparent)",
         }}
       >
-        HR {hrText} bpm
+        hr {hrText}
       </span>
 
-      {/* calipers — only while the cursor is over the strip's band */}
+      {/* calipers — only while the cursor is over the band */}
       {caliper !== null && (
         <>
           <div
@@ -293,10 +271,10 @@ export default function EcgStrip(): JSX.Element {
           <span
             className="absolute whitespace-nowrap"
             style={{
-              left: caliper - CALIPER_GAP + 6,
-              top: 6,
+              left: caliper - CALIPER_GAP + 5,
+              bottom: 5,
               fontFamily: MONO,
-              fontSize: "0.62rem",
+              fontSize: "0.6rem",
               letterSpacing: "0.08em",
               color: "color-mix(in srgb, var(--bone) 70%, transparent)",
             }}

@@ -5,9 +5,8 @@
   --bone: #e8e3d8;
   --blood: #a61b1b;
   --green: #36c97c;
-  /* next/font sets --font-fraunces and --font-mono on <html>; alias the
-     display face here so components can use var(--font-display) directly. */
-  --font-display: var(--font-fraunces);
+  /* next/font sets --font-display (Bricolage Grotesque) and --font-mono
+     (IBM Plex Mono) on <html>. Both are consumed directly below. */
 }
 
 @theme inline {
@@ -16,7 +15,7 @@
   --color-bone: var(--bone);
   --color-blood: var(--blood);
   --color-trace: var(--green);
-  --font-display: var(--font-fraunces), serif;
+  --font-display: var(--font-display), sans-serif;
 }
 
 html,
@@ -28,7 +27,7 @@ body {
 }
 
 .font-display {
-  font-family: var(--font-fraunces), serif;
+  font-family: var(--font-display), sans-serif;
 }
 
 ::selection {
