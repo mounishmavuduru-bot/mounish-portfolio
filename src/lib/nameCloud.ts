@@ -169,8 +169,8 @@ export function buildNameCloud(
 
 /**
  * Build a particle cloud in the shape of a LETTER SHEET — a portrait paper
- * page: a strong rectangular border, five horizontal ruled lines inside, and a
- * small stamp square at the top-right, drawn in thick strokes on an offscreen
+ * page: a strong rectangular border with five horizontal ruled lines inside,
+ * drawn in thick strokes on an offscreen
  * canvas. The opaque pixels are sampled and resampled to EXACTLY `count`
  * points, centered and scaled so the sheet is ≈ `worldHeight` tall, with a
  * small ±Z depth so it reads as engraved stipple rather than a flat plate.
@@ -232,18 +232,7 @@ export function buildLetterCloud(
     ctx.closePath();
     ctx.stroke();
 
-    // Small stamp square, top-right inside the sheet.
-    const stampInset = 42;
-    const stampSize = 86;
-    ctx.lineWidth = 12;
-    ctx.strokeRect(
-      right - stampInset - stampSize,
-      top + stampInset,
-      stampSize,
-      stampSize,
-    );
-
-    // Five horizontal ruled lines below the stamp block — the writing area.
+    // Five horizontal ruled lines — the writing area.
     // Thinner than the border so the page edge stays dominant.
     const ruleInset = 56;
     const ruleTop = top + 220;

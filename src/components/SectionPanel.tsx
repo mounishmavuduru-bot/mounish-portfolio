@@ -1,7 +1,7 @@
 "use client";
 
 import type { JSX } from "react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import gsap from "gsap";
 import {
   projects,
@@ -12,12 +12,13 @@ import {
 } from "@/data/content";
 import { useScene, sceneActions } from "@/lib/sceneStore";
 
-const MARGIN = 14; // viewport edge gap
 const BG = "var(--paper-2)";
 const HAIRLINE = "var(--line)";
 const MONO =
   'var(--font-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace';
 const DISPLAY = "var(--font-display), Spectral, Georgia, serif";
+/** Faint paper wash over the dimmed organ — never opaque, never blurred. */
+const WASH = "rgba(239, 231, 214, 0.42)";
 
 type Row = { primary: string; meta: string };
 
@@ -31,237 +32,383 @@ function rowsFor(section: Site): Row[] {
   return positions.map((p) => ({ primary: p.role, meta: p.org }));
 }
 
+/** Section → EKG lead + organ, shown as the tiny mono line above the title. */
+const leadFor: Record<Site, string> = {
+  projects: "lead I — heart",
+  achievements: "lead II — brain",
+  positions: "lead III — liver",
+};
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 /**
- * A narrow vertical rectangle that grows DOWNWARD from the click anchor and
- * shows the active organ's content section. Self-contained: it reads the panel
- * slice from the scene store and renders nothing while closed. Escape,
- * outside-click, and the close button all call sceneActions.closePanel().
+ * Full-viewport showcase overlay (johwska-style work view): a scrollable
+ * gallery of typographic tiles floating over the dimmed 3D organ. No solid
+ * background — only a faint paper wash, so the dimmed specimen and grid stay
+ * visible behind. Self-contained: reads the panel slice from the scene store
+ * and renders nothing while closed. Escape, the close control, and clicking
+ * the backdrop outside the header/tile column all call
+ * sceneActions.closePanel().
  *
- * Atlas styling: a solid cream-paper card (--paper-2, never glass), sharp 2px
- * corners, 1px ink hairline border, Spectral names, mono meta, oxblood on
- * hover. No "specimen —" label. Opens via scaleY 0→1 from the top edge while
- * the contents fade in (transform/opacity only); max-height capped with
- * internal vertical scroll.
+ * Atlas styling: paper-2 tiles with 1px ink hairlines and sharp corners, big
+ * mono index numerals, Spectral names, mono meta, oxblood only on hover.
+ * Open = title first, then tiles rise+fade with a 50ms stagger; close = quick
+ * fade. Transform/opacity only; prefers-reduced-motion gets no movement. The
+ * stored click anchor is used solely as the transform-origin hint for a
+ * subtle scale-from-click on open — the overlay is full-viewport regardless.
  */
 export default function SectionPanel(): JSX.Element | null {
   const panel = useScene((s) => s.panel);
-  const open = panel.open;
-  const section = panel.section;
-  const anchor = panel.anchor;
 
-  if (!open || !section || !anchor) return null;
-  // Remount per open so the entrance animation replays from a clean state and
-  // position is recomputed for the new anchor.
+  if (!panel.open || !panel.section) return null;
+  // Remount per open so the entrance animation replays from a clean state.
   return (
-    <PanelBody
-      key={`${section}-${anchor.x}-${anchor.y}`}
-      section={section}
-      anchor={anchor}
+    <ShowcaseOverlay
+      key={`${panel.section}-${panel.anchor?.x ?? 0}-${panel.anchor?.y ?? 0}`}
+      section={panel.section}
+      anchor={panel.anchor}
     />
   );
 }
 
-function PanelBody({
+function ShowcaseOverlay({
   section,
   anchor,
 }: {
   section: Site;
-  anchor: { x: number; y: number };
+  anchor: { x: number; y: number } | null;
 }): JSX.Element {
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-
-  // Resolved on-screen position. Top sits AT the anchor (panel grows down);
-  // horizontally near anchor.x, clamped on-screen using the measured width.
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const zoomRef = useRef<HTMLDivElement | null>(null);
+  const headRef = useRef<HTMLElement | null>(null);
+  const listRef = useRef<HTMLOListElement | null>(null);
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const openTlRef = useRef<gsap.core.Timeline | null>(null);
+  const closingRef = useRef(false);
 
   const rows = rowsFor(section);
   const title = siteLabels[section];
+  const lead = leadFor[section];
 
-  // Clamp into the viewport from the measured size, before paint.
+  /** Quick reverse fade (~160ms), then actually close via the store. */
+  const requestClose = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    const overlay = overlayRef.current;
+    if (!overlay || prefersReducedMotion()) {
+      sceneActions.closePanel();
+      return;
+    }
+    openTlRef.current?.kill();
+    gsap.to(overlay, {
+      opacity: 0,
+      duration: 0.16,
+      ease: "power1.in",
+      onComplete: () => sceneActions.closePanel(),
+    });
+  }, []);
+
+  // Open animation: title fades in first, tiles rise+fade with a 50ms
+  // stagger (translateY(14px)→0, ~320ms power2.out). The whole content block
+  // scales from ~0.985 toward the click anchor. Transform/opacity only.
+  // The "showcase-ready" class gates the tile hover transition until the
+  // gsap-driven transforms are done (and cleared), so they never fight.
   useLayoutEffect(() => {
-    const el = panelRef.current;
-    if (!el) return;
-    const vw = window.innerWidth;
-    const rect = el.getBoundingClientRect();
-    const w = rect.width || 280;
+    const overlay = overlayRef.current;
+    const zoom = zoomRef.current;
+    const head = headRef.current;
+    const list = listRef.current;
+    if (!overlay || !zoom || !head || !list) return;
 
-    // Horizontal: nudge left so the cursor sits a little inside the panel,
-    // then clamp to the viewport.
-    let left = anchor.x - 18;
-    left = Math.max(MARGIN, Math.min(left, vw - w - MARGIN));
+    if (prefersReducedMotion()) {
+      // No movement: everything renders in place; just mark ready + focus.
+      overlay.classList.add("showcase-ready");
+      closeRef.current?.focus({ preventScroll: true });
+      return;
+    }
 
-    // Vertical: top AT the anchor, clamped so the (capped) panel stays on-screen.
-    const top = Math.max(MARGIN, anchor.y);
-
-    setPos({ left, top });
-  }, [anchor.x, anchor.y]);
-
-  // Open animation: scaleY 0→1 from the top edge, contents fade in. ~280ms
-  // power3.out. Transform/opacity only.
-  useLayoutEffect(() => {
-    if (!pos) return;
-    const panel = panelRef.current;
-    const body = bodyRef.current;
-    if (!panel || !body) return;
+    const tiles = Array.from(
+      list.querySelectorAll<HTMLElement>(".showcase-tile"),
+    );
+    const closeEl = closeRef.current;
+    const ox = anchor ? anchor.x : window.innerWidth / 2;
+    const oy = anchor ? anchor.y : window.innerHeight / 2;
 
     const tl = gsap.timeline();
-    tl.set(panel, {
-      opacity: 1,
-      scaleY: 0,
-      transformOrigin: "50% 0%",
-    });
-    tl.set(body, { opacity: 0 });
-    tl.to(panel, { scaleY: 1, duration: 0.28, ease: "power3.out" });
-    tl.to(body, { opacity: 1, duration: 0.2, ease: "power1.out" }, "-=0.16");
+    openTlRef.current = tl;
+    tl.set(overlay, { opacity: 0 });
+    tl.set(zoom, { scale: 0.985, transformOrigin: `${ox}px ${oy}px` });
+    tl.set(head, { opacity: 0, y: 10 });
+    if (closeEl) tl.set(closeEl, { opacity: 0 });
+    tl.set(tiles, { opacity: 0, y: 14 });
+    tl.to(overlay, { opacity: 1, duration: 0.18, ease: "power1.out" }, 0);
+    tl.to(
+      zoom,
+      { scale: 1, duration: 0.36, ease: "power2.out", clearProps: "transform" },
+      0.02,
+    );
+    tl.to(
+      head,
+      {
+        opacity: 1,
+        y: 0,
+        duration: 0.26,
+        ease: "power2.out",
+        clearProps: "transform",
+      },
+      0.05,
+    );
+    if (closeEl) {
+      tl.to(closeEl, { opacity: 1, duration: 0.2, ease: "power1.out" }, 0.12);
+    }
+    tl.to(
+      tiles,
+      {
+        opacity: 1,
+        y: 0,
+        duration: 0.32,
+        ease: "power2.out",
+        stagger: 0.05,
+        clearProps: "transform",
+      },
+      0.16,
+    );
     tl.call(() => {
-      panel.focus({ preventScroll: true });
+      overlay.classList.add("showcase-ready");
+      closeRef.current?.focus({ preventScroll: true });
     });
 
     return () => {
       tl.kill();
+      openTlRef.current = null;
     };
-  }, [pos]);
+  }, [anchor]);
 
   // Escape closes; cleaned up on unmount.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        sceneActions.closePanel();
+        requestClose();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [requestClose]);
 
   return (
-    // Transparent full-screen catcher: any outside pointerdown closes.
+    // Full-viewport overlay: sits above the canvas, just under the EKG strip
+    // (z-30) and the monogram (z-40). The overlay itself is the scroller, so
+    // wheel/touch scrolling moves the tile column; overscroll-behavior keeps
+    // it from leaking into the (paused) organ scroll behind.
     <div
-      className="fixed inset-0 z-40"
-      style={{ background: "transparent" }}
-      onPointerDown={() => sceneActions.closePanel()}
+      ref={overlayRef}
+      role="dialog"
+      aria-modal="false"
+      aria-label={`${title} — showcase`}
+      data-backdrop="true"
+      className="fixed inset-0 overflow-y-auto"
+      style={{
+        zIndex: 28,
+        background: WASH,
+        overscrollBehavior: "contain",
+      }}
+      onPointerDown={(e) => {
+        // Backdrop close: only when the press lands on the wash itself (or
+        // the full-bleed content wrapper), never inside the header, tiles,
+        // or close control.
+        const t = e.target as HTMLElement;
+        if (!t.dataset || t.dataset.backdrop !== "true") return;
+        requestClose();
+      }}
     >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="false"
-        aria-label={`${title} section`}
-        tabIndex={-1}
-        className="fixed flex flex-col outline-none"
+      {/* close control — pinned top-right, clear of the EKG strip */}
+      <button
+        ref={closeRef}
+        type="button"
+        onClick={requestClose}
+        className="showcase-close font-mono"
         style={{
-          left: pos ? pos.left : anchor.x,
-          top: pos ? pos.top : anchor.y,
-          width: "clamp(244px, 23vw, 328px)",
-          maxHeight: "min(70vh, calc(100vh - 28px))",
-          background: BG,
-          border: `1px solid ${HAIRLINE}`,
-          borderRadius: "2px",
-          // hidden until clamp+open animation places it (avoids a flash)
-          opacity: pos ? undefined : 0,
-          willChange: "transform, opacity",
+          position: "fixed",
+          top: "72px",
+          right: "clamp(16px, 3vw, 30px)",
+          zIndex: 1,
+          fontFamily: MONO,
+          fontSize: "0.62rem",
+          letterSpacing: "0.08em",
+          textTransform: "lowercase",
+          color: "var(--ink-soft)",
+          background: "transparent",
+          border: "none",
+          borderBottom: `1px solid ${HAIRLINE}`,
+          borderRadius: 0,
+          padding: "2px 1px 3px",
+          cursor: "pointer",
         }}
-        onPointerDown={(e) => e.stopPropagation()}
       >
-        <div ref={bodyRef} className="flex min-h-0 flex-col overflow-y-auto">
-          {/* header — no "specimen —" label, just the section title + close */}
-          <div
-            className="flex items-center justify-between gap-3"
+        close
+      </button>
+
+      {/* scale-from-click wrapper; min-height fills the viewport so gutter
+          clicks below short columns still read as backdrop */}
+      <div
+        ref={zoomRef}
+        data-backdrop="true"
+        style={{
+          minHeight: "100%",
+          paddingTop: "72px",
+          paddingBottom: "min(14vh, 120px)",
+        }}
+      >
+        {/* header — lead line over the Spectral title, centered */}
+        <header
+          ref={headRef}
+          style={{
+            textAlign: "center",
+            padding: "0 56px",
+            marginBottom: "clamp(28px, 5vh, 48px)",
+          }}
+        >
+          <p
+            className="font-mono"
             style={{
-              position: "sticky",
-              top: 0,
-              background: BG,
-              padding: "13px 14px 11px",
-              borderBottom: `1px solid ${HAIRLINE}`,
-              zIndex: 1,
+              fontFamily: MONO,
+              fontSize: "0.6rem",
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              color: "var(--sepia)",
+              margin: "0 0 10px",
             }}
           >
-            <h2
+            {lead}
+          </p>
+          <h2
+            style={{
+              fontFamily: DISPLAY,
+              fontWeight: 600,
+              fontSize: "clamp(1.8rem, 4vw, 2.6rem)",
+              lineHeight: 1.05,
+              color: "var(--ink)",
+              margin: 0,
+            }}
+          >
+            {title}
+          </h2>
+        </header>
+
+        {/* typographic tiles — generous single column, centered */}
+        <ol
+          ref={listRef}
+          style={{
+            listStyle: "none",
+            maxWidth: "720px",
+            margin: "0 auto",
+            padding: "0 16px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px",
+          }}
+        >
+          {rows.map((row, i) => (
+            <li
+              key={i}
+              className="showcase-tile"
               style={{
-                fontFamily: DISPLAY,
-                fontWeight: 600,
-                fontSize: "1.32rem",
-                lineHeight: 1.05,
-                color: "var(--ink)",
-                margin: 0,
+                background: BG,
+                border: `1px solid ${HAIRLINE}`,
+                borderRadius: 0,
+                padding: "clamp(22px, 3vw, 26px)",
               }}
             >
-              {title}
-            </h2>
-
-            <button
-              type="button"
-              onClick={() => sceneActions.closePanel()}
-              className="panel-close font-mono"
-              style={{
-                fontFamily: MONO,
-                fontSize: "0.6rem",
-                letterSpacing: "0.06em",
-                textTransform: "lowercase",
-                color: "var(--ink-soft)",
-                border: "1px solid var(--line)",
-                borderRadius: "2px",
-                padding: "4px 8px",
-                background: "transparent",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                transition: "color 150ms linear, border-color 150ms linear",
-              }}
-            >
-              close
-            </button>
-          </div>
-
-          {/* rows */}
-          <div className="flex flex-col" style={{ padding: "2px 14px 12px" }}>
-            {rows.map((row, i) => (
               <div
-                key={i}
-                className="row group flex flex-col gap-1"
                 style={{
-                  padding: "11px 2px",
-                  borderBottom: `1px solid ${HAIRLINE}`,
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: "clamp(14px, 2.5vw, 22px)",
                 }}
               >
                 <span
-                  className="row-primary"
+                  aria-hidden="true"
+                  className="font-mono"
                   style={{
-                    fontFamily: DISPLAY,
-                    fontWeight: 500,
-                    fontSize: "1.02rem",
-                    lineHeight: 1.22,
-                    color: "var(--ink)",
-                    transition: "color 150ms linear",
+                    fontFamily: MONO,
+                    fontSize: "1.6rem",
+                    lineHeight: 1,
+                    color: "color-mix(in srgb, var(--sepia) 45%, transparent)",
+                    minWidth: "2.2ch",
+                    flexShrink: 0,
                   }}
                 >
-                  {row.primary}
+                  {String(i + 1).padStart(2, "0")}
                 </span>
-                {row.meta ? (
+                <span
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                    minWidth: 0,
+                  }}
+                >
                   <span
-                    className="font-mono"
+                    className="tile-name"
                     style={{
-                      fontFamily: MONO,
-                      fontSize: "0.6rem",
-                      letterSpacing: "0.06em",
-                      color: "var(--sepia)",
+                      fontFamily: DISPLAY,
+                      fontWeight: 500,
+                      fontSize: "clamp(1.18rem, 2.4vw, 1.42rem)",
+                      lineHeight: 1.25,
+                      color: "var(--ink)",
                     }}
                   >
-                    {row.meta}
+                    {row.primary}
                   </span>
-                ) : null}
+                  {row.meta ? (
+                    <span
+                      className="font-mono"
+                      style={{
+                        fontFamily: MONO,
+                        fontSize: "0.62rem",
+                        letterSpacing: "0.08em",
+                        color: "var(--sepia)",
+                      }}
+                    >
+                      {row.meta}
+                    </span>
+                  ) : null}
+                </span>
               </div>
-            ))}
-          </div>
-        </div>
+            </li>
+          ))}
+        </ol>
       </div>
 
-      {/* hover: row primary + close shift to oxblood, color only (no lift) */}
+      {/* hover: name→oxblood + a 2px lift, transform/color only, 160ms. The
+          lift transition only arms once the open stagger has finished
+          (showcase-ready), so it never tweens against gsap. */}
       <style>{`
-        .row:hover .row-primary { color: var(--oxblood); }
-        .panel-close:hover,
-        .panel-close:focus-visible {
+        .showcase-ready .showcase-tile { transition: transform 160ms ease; }
+        .showcase-tile:hover { transform: translateY(-2px); }
+        .tile-name { transition: color 160ms ease; }
+        .showcase-tile:hover .tile-name { color: var(--oxblood); }
+        .showcase-close {
+          transition: color 160ms linear, border-color 160ms linear;
+        }
+        .showcase-close:hover,
+        .showcase-close:focus-visible {
           color: var(--oxblood);
-          border-color: color-mix(in srgb, var(--oxblood) 55%, transparent);
+          border-color: var(--oxblood);
+        }
+        .showcase-close:focus-visible {
+          outline: 1px solid var(--oxblood);
+          outline-offset: 3px;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .showcase-ready .showcase-tile,
+          .showcase-tile:hover { transform: none; transition: none; }
         }
       `}</style>
     </div>

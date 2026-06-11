@@ -233,6 +233,24 @@ export const pointer: {
 };
 
 // ---------------------------------------------------------------------------
+// Non-reactive UI channel
+// ---------------------------------------------------------------------------
+
+/**
+ * Mutable UI channel — same non-reactive pattern as `pointer`: written by DOM
+ * components, read inside rAF loops. Mutating these fields MUST NOT schedule
+ * a React render; do not wrap this in state.
+ *
+ *  monogramExpanded — IntroBlock's MM monogram is currently expanded to the
+ *                     full name. EkgMonitor reads this per frame and eases its
+ *                     effective left inset wider so neither the trace nor the
+ *                     calipers ever cross the name.
+ */
+export const ui: { monogramExpanded: boolean } = {
+  monogramExpanded: false,
+};
+
+// ---------------------------------------------------------------------------
 // Non-reactive EKG effect channel
 // ---------------------------------------------------------------------------
 

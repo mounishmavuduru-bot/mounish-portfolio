@@ -21,6 +21,9 @@
  * Launcher = a small chart-clip control bottom-left; the backtick key toggles
  * from anywhere. Escape closes. Stateless except the pulse round-trips.
  *
+ * The panel is content-sized (maxHeight-bounded, no filler middle); only the
+ * logbook ledger scrolls internally, and only when it actually overflows.
+ *
  * Atlas language only: paper card (--paper-2), --line hairlines, --ink text,
  * Spectral entries, IBM Plex Mono meta, --oxblood accents. Sharp corners
  * (small controls ≤2px), no green, no glass/backdrop-blur, no glow, no emoji.
@@ -295,7 +298,7 @@ function Logbook() {
   );
 
   return (
-    <div>
+    <div style={logbookStyle}>
       <h3 style={logLabelStyle}>logbook</h3>
 
       {pulses.recent.length === 0 ? (
@@ -531,7 +534,8 @@ const panelStyle: CSSProperties = {
   bottom: 52,
   zIndex: 60,
   width: "min(440px, calc(100vw - 28px))",
-  height: "min(64vh, 520px)",
+  // Content-sized: the panel hugs its sections; maxHeight only bounds it.
+  maxHeight: "min(64vh, 520px)",
   display: "flex",
   flexDirection: "column",
   background: "var(--paper-2)",
@@ -571,21 +575,26 @@ const closeButtonStyle: CSSProperties = {
 };
 
 const bodyStyle: CSSProperties = {
-  flex: "1 1 auto",
-  overflowY: "auto",
-  padding: "12px",
+  // Does not grow — the panel fits its content. minHeight 0 lets the ledger
+  // list (the only internal scroller) shrink when the maxHeight bound bites.
+  flex: "0 1 auto",
+  minHeight: 0,
+  display: "flex",
+  flexDirection: "column",
+  padding: "14px 12px 16px",
 };
 
 // --- vitals line ------------------------------------------------------------
 
 const vitalsLineStyle: CSSProperties = {
+  flex: "0 0 auto",
   fontFamily: MONO,
   fontSize: "0.68rem",
   letterSpacing: "0.08em",
   lineHeight: 1.4,
   color: "var(--ink-soft)",
   margin: 0,
-  padding: "2px 0 12px",
+  padding: "0 0 14px",
   borderBottom: "1px solid var(--line)",
 };
 
@@ -596,22 +605,32 @@ const vitalNumStyle: CSSProperties = {
 
 // --- logbook ledger ----------------------------------------------------------
 
+const logbookStyle: CSSProperties = {
+  // Flex column so only the ledger list scrolls when the panel is bounded.
+  display: "flex",
+  flexDirection: "column",
+  minHeight: 0,
+  flex: "0 1 auto",
+};
+
 const logLabelStyle: CSSProperties = {
+  flex: "0 0 auto",
   fontFamily: MONO,
   fontSize: "0.56rem",
   letterSpacing: "0.14em",
   textTransform: "uppercase",
   color: "var(--sepia)",
   fontWeight: 500,
-  margin: "14px 0 2px",
+  margin: "14px 0 4px",
 };
 
 const emptyStyle: CSSProperties = {
+  flex: "0 0 auto",
   fontFamily: DISPLAY,
   fontSize: "0.88rem",
   color: "var(--ink-soft)",
   margin: "6px 0 0",
-  padding: "0 0 7px",
+  padding: "0 0 8px",
   borderBottom: "1px solid var(--line)",
 };
 
@@ -621,6 +640,10 @@ const ledgerStyle: CSSProperties = {
   padding: 0,
   display: "flex",
   flexDirection: "column",
+  // Scrolls internally only when the signatures actually overflow the bound.
+  flex: "0 1 auto",
+  minHeight: 0,
+  overflowY: "auto",
 };
 
 const ledgerLineStyle: CSSProperties = {
@@ -652,10 +675,11 @@ const ledgerAgoStyle: CSSProperties = {
 // --- inline sign line ---------------------------------------------------------
 
 const signFormStyle: CSSProperties = {
+  flex: "0 0 auto",
   display: "flex",
   alignItems: "baseline",
   gap: 8,
-  padding: "7px 0 0",
+  padding: "8px 0 0",
 };
 
 const signDashStyle: CSSProperties = {
@@ -694,6 +718,7 @@ const signButtonStyle: CSSProperties = {
 };
 
 const signErrorStyle: CSSProperties = {
+  flex: "0 0 auto",
   fontFamily: MONO,
   fontSize: "0.62rem",
   lineHeight: 1.4,
@@ -702,6 +727,7 @@ const signErrorStyle: CSSProperties = {
 };
 
 const signOkStyle: CSSProperties = {
+  flex: "0 0 auto",
   fontFamily: MONO,
   fontSize: "0.62rem",
   lineHeight: 1.4,

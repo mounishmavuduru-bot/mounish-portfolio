@@ -2,7 +2,7 @@
 
 import type { JSX } from "react";
 import { useEffect, useRef, useState } from "react";
-import { pointer, subscribeEkg, type EkgEvent } from "@/lib/sceneStore";
+import { pointer, subscribeEkg, ui, type EkgEvent } from "@/lib/sceneStore";
 
 // ---------------------------------------------------------------------------
 // Atlas rhythm-strip HEADER BAR.
@@ -13,7 +13,16 @@ import { pointer, subscribeEkg, type EkgEvent } from "@/lib/sceneStore";
 // this is a quiet printed strip, not a monitor screen.
 //
 // The left of the bar is reserved blank space (MONOGRAM_INSET) where IntroBlock
-// renders the MM monogram; the trace begins to the right of it.
+// renders the MM monogram; the trace begins to the right of it. While the
+// monogram is expanded to the full name (read per frame from the non-reactive
+// `ui` channel) the effective inset eases out to INSET_EXPANDED so neither the
+// trace nor the calipers ever cross the name.
+//
+// Ink profile across the strip (destination-out fade): full dark ink only in a
+// short band at the RIGHT (newest signal), a sharp knee down to a light ghost
+// for the long middle, easing to nothing as it approaches the monogram inset
+// on the left. While the cursor is over the band, the region between the two
+// caliper lines is clipped and redrawn at full ink — a caliper reveal.
 //
 // It reads the shared `pointer` channel (written by PointerBridge) for the four
 // cursor interactions (deflection-follows-cursor, hr-from-speed beat period,
@@ -29,6 +38,7 @@ import { pointer, subscribeEkg, type EkgEvent } from "@/lib/sceneStore";
 
 const HEIGHT = 54; // css px — header-bar height (also the overEkg band PointerBridge uses)
 const MONOGRAM_INSET = 120; // css px reserved at the left for the MM monogram
+const INSET_EXPANDED = 300; // css px inset while the monogram is expanded to the full name
 const SPEED = 150; // css px/sec, trace scrolls right → left
 
 // Atlas palette (no green, no glow).
@@ -90,6 +100,8 @@ export default function EkgMonitor(): JSX.Element {
     let dpr = 1;
     let cssW = 0; // css px width of the canvas
     let wavePhase = 0; // accumulated beat phase, advanced by live HR
+    let ys = new Float32Array(0); // per-column trace y, rebuilt each frame
+    let insetEff = MONOGRAM_INSET; // eased left inset (widens while the name is expanded)
 
     // ---- derived cursor dynamics (all read from the global pointer channel) -
     let hr = HR_BASE; // eased bpm actually driving the waveform
@@ -118,6 +130,7 @@ export default function EkgMonitor(): JSX.Element {
       cssW = Math.max(1, wrap.clientWidth);
       traceCanvas.width = Math.max(1, Math.round(cssW * dpr));
       traceCanvas.height = Math.max(1, Math.round(HEIGHT * dpr));
+      ys = new Float32Array(Math.max(1, Math.ceil(cssW)));
     };
 
     // (a) amplitude swell — gaussian centered on the cursor x (css px), so a
@@ -170,6 +183,12 @@ export default function EkgMonitor(): JSX.Element {
       const beatsPerSec = hr / 60;
       wavePhase += beatsPerSec * dt;
 
+      // ---- ease the effective left inset toward the monogram state ----------
+      // While IntroBlock reports the monogram expanded (non-reactive ui channel)
+      // the trace + fade endpoint slide right so the name zone stays clean.
+      const insetTarget = ui.monogramExpanded ? INSET_EXPANDED : MONOGRAM_INSET;
+      insetEff += (insetTarget - insetEff) * Math.min(1, dt * 7);
+
       // ---- repaint the whole trace from the rolling phase model -------------
       tctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       tctx.clearRect(0, 0, cssW, HEIGHT);
@@ -205,33 +224,97 @@ export default function EkgMonitor(): JSX.Element {
         return v;
       };
 
-      // draw the trace across the visible strip (starting after the monogram
-      // inset so the trace never runs under the MM mark)
-      const x0 = MONOGRAM_INSET;
+      // draw the trace across the visible strip (starting after the eased
+      // monogram inset so the trace never runs under the MM mark / full name)
+      const x0 = Math.min(cssW - 1, Math.max(0, Math.floor(insetEff)));
+      // precompute per-column y once; the stroke passes below just read it
+      for (let x = x0; x < cssW; x++) ys[x] = baseline - sampleAt(x) * amp;
+
+      // raw-ink nib alpha: a slow drifting sin field along x so the wide pass
+      // breathes like a hand-inked line (no glow, pure ink).
+      const nibAlpha = (x: number): number => {
+        const s =
+          Math.sin(x * 0.018 + wavePhase * 1.3) * 0.5 +
+          Math.sin(x * 0.005 - wavePhase * 0.45) * 0.5;
+        return 0.2 + 0.26 * (0.5 + 0.5 * s);
+      };
+
+      // stroke the precomputed polyline over [a, b] (css px columns)
+      const strokeSpan = (a: number, b: number, width: number, alpha: number) => {
+        tctx.globalAlpha = alpha;
+        tctx.lineWidth = width;
+        tctx.beginPath();
+        for (let x = a; x <= b; x++) {
+          if (x === a) tctx.moveTo(x, ys[x]);
+          else tctx.lineTo(x, ys[x]);
+        }
+        tctx.stroke();
+      };
+
       tctx.lineJoin = "round";
       tctx.lineCap = "round";
-      // ink body
       tctx.strokeStyle = INK;
-      tctx.lineWidth = 1.4;
-      tctx.beginPath();
-      for (let x = x0; x < cssW; x++) {
-        const y = baseline - sampleAt(x) * amp;
-        if (x === x0) tctx.moveTo(x, y);
-        else tctx.lineTo(x, y);
+      // two passes: a thin constant core + a wider pass whose alpha drifts
+      // along x (chunked strokes) so the line reads like a raw ink nib.
+      strokeSpan(x0, cssW - 1, 1.1, 1);
+      const CHUNK = 26;
+      for (let cx = x0; cx < cssW - 1; cx += CHUNK) {
+        const end = Math.min(cx + CHUNK, cssW - 1);
+        strokeSpan(cx, end, 1.9, nibAlpha((cx + end) / 2));
       }
-      tctx.stroke();
+      tctx.globalAlpha = 1;
 
-      // sharp fade-in at the right edge: the newest signal enters invisible
-      // and resolves to full ink over a narrow band as it scrolls left.
+      // ---- fade profile (destination-out; fill alpha = ink REMOVED) ---------
+      // Right ~12% of the strip: full dark ink (newest signal). Then a sharp
+      // knee down to a light ghost (~0.28 visible) across the long middle,
+      // easing to nothing as it approaches the eased monogram inset on the left.
       {
-        const FADE_W = 130; // css px — narrow band = sharp ramp
-        const grad = tctx.createLinearGradient(cssW - FADE_W, 0, cssW, 0);
-        grad.addColorStop(0, "rgba(0,0,0,0)");
-        grad.addColorStop(1, "rgba(0,0,0,1)");
-        tctx.globalCompositeOperation = "destination-out";
-        tctx.fillStyle = grad;
-        tctx.fillRect(cssW - FADE_W, 0, FADE_W, HEIGHT);
-        tctx.globalCompositeOperation = "source-over";
+        const span = cssW - insetEff;
+        if (span > 8) {
+          const kneeX = cssW - Math.max(90, cssW * 0.12);
+          const knee = Math.min(0.97, Math.max(0.6, (kneeX - insetEff) / span));
+          const grad = tctx.createLinearGradient(insetEff, 0, cssW, 0);
+          grad.addColorStop(0, "rgba(0,0,0,1)"); // gone at the inset
+          grad.addColorStop(0.12, "rgba(0,0,0,0.94)");
+          grad.addColorStop(0.38, "rgba(0,0,0,0.8)");
+          grad.addColorStop(Math.max(0.5, knee - 0.25), "rgba(0,0,0,0.72)"); // ghost plateau
+          grad.addColorStop(knee - 0.02, "rgba(0,0,0,0.72)");
+          grad.addColorStop(knee, "rgba(0,0,0,0)"); // sharp knee → full ink
+          grad.addColorStop(1, "rgba(0,0,0,0)");
+          tctx.globalCompositeOperation = "destination-out";
+          tctx.fillStyle = grad;
+          // start a few px left of the inset: the gradient pads beyond stop 0
+          // with full erase, catching the polyline's stroke-radius fringe.
+          const fadeL = Math.max(0, insetEff - 4);
+          tctx.fillRect(fadeL, 0, cssW - fadeL, HEIGHT);
+          tctx.globalCompositeOperation = "source-over";
+        }
+      }
+
+      // ---- caliper reveal: full-dark trace between the two caliper lines ----
+      // Calipers are suppressed entirely left of the eased inset so they can
+      // never cross the expanded name: the whole instrument (including the
+      // left line at calX - CALIPER_GAP) must sit right of the inset.
+      let calipersOn = false;
+      let calX = 0;
+      if (pointer.overEkg) {
+        const rect = wrap.getBoundingClientRect();
+        calX = pointer.x - rect.left;
+        calipersOn = calX - CALIPER_GAP >= insetEff;
+      }
+      if (calipersOn) {
+        const bandL = Math.max(x0, Math.floor(calX - CALIPER_GAP));
+        const bandR = Math.min(cssW - 1, Math.ceil(calX));
+        if (bandR > bandL) {
+          tctx.save();
+          tctx.beginPath();
+          tctx.rect(bandL, 0, bandR - bandL, HEIGHT);
+          tctx.clip();
+          // override the fade inside the band: redraw at full ink alpha
+          strokeSpan(bandL, bandR, 1.5, 1);
+          tctx.restore();
+          tctx.globalAlpha = 1;
+        }
       }
 
       // retire the ectopic / defib once they've scrolled off the left edge
@@ -244,12 +327,10 @@ export default function EkgMonitor(): JSX.Element {
       const rounded = Math.round(hr);
       setHrText((prev) => (prev === rounded ? prev : rounded));
 
-      // (d) calipers — only while the shared channel reports the cursor over the
-      // band. wrap is full-width fixed at the top, so band-local x ≈ pointer.x.
-      if (pointer.overEkg) {
-        const rect = wrap.getBoundingClientRect();
-        const next = pointer.x - rect.left;
-        setCaliper((prev) => (prev === next ? prev : next));
+      // (d) caliper DOM lines — only while the cursor is over the band AND
+      // right of the eased inset (computed above for the canvas reveal).
+      if (calipersOn) {
+        setCaliper((prev) => (prev === calX ? prev : calX));
       } else {
         setCaliper((prev) => (prev === null ? prev : null));
       }

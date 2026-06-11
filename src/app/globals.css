@@ -9,7 +9,9 @@
    =========================================================================== */
 
 :root {
-  --paper: #efe7d6; /* page background, warm cream */
+  --paper: #efe7d6; /* page background, warm cream (gradient midpoint) */
+  --paper-hi: #f3ecdd; /* matte gradient head — barely lighter cream */
+  --paper-lo: #e7dcc5; /* matte gradient foot — barely deeper cream */
   --paper-2: #e6dcc6; /* slightly deeper panels */
   --ink: #1a1714; /* primary text + particle dots */
   --ink-soft: #5b5249; /* secondary text */
@@ -31,9 +33,28 @@
   --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* The whole app is fixed inset-0; give the root a full-height box so the
+   gradient ground spans the viewport rather than a collapsed body. */
+html {
+  height: 100%;
+}
+body {
+  min-height: 100%;
+}
+
 html,
 body {
-  background: var(--paper);
+  /* Matte single-hue ground — a barely-there cream ramp replacing the flat
+     --paper fill (drafting-table modern-archival). Soft, matte, no sheen.
+     Fixed layers above (page root, Specimen wrapper + R3F clear color) must
+     stay transparent for this to read. */
+  background: linear-gradient(
+    180deg,
+    var(--paper-hi) 0%,
+    var(--paper) 38%,
+    var(--paper-lo) 100%
+  );
+  background-attachment: fixed;
   color: var(--ink);
   /* Body text is the old-style serif; tiny labels/meta opt into mono. */
   font-family: var(--font-display), Spectral, Georgia, serif;

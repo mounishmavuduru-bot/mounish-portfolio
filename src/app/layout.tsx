@@ -51,7 +51,9 @@ export default function RootLayout({
       lang="en"
       className={`${plexMono.variable} ${spectral.variable} h-full`}
     >
-      <body className="min-h-full bg-[#efe7d6] text-[#1a1714] antialiased">
+      {/* No flat bg utility here — globals.css paints the matte cream gradient
+          ground on html/body; every fixed layer above stays transparent. */}
+      <body className="min-h-full text-[#1a1714] antialiased">
         {children}
       </body>
     </html>

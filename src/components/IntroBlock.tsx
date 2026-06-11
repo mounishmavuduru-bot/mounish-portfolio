@@ -1,9 +1,9 @@
 "use client";
 
 import type { JSX } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TAGLINE } from "@/data/content";
-import { useScene } from "@/lib/sceneStore";
+import { ui, useScene } from "@/lib/sceneStore";
 import ContactButtons from "./ContactButtons";
 
 const MONO =
@@ -46,6 +46,20 @@ export default function IntroBlock(): JSX.Element {
   // the `expanded` state resets on the next mount — no effect needed.
   const [expanded, setExpanded] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  // Mirror expand/collapse into the shared non-reactive ui channel so
+  // EkgMonitor can widen its left inset and keep the name zone clean.
+  const setMonogram = (v: boolean) => {
+    ui.monogramExpanded = v;
+    setExpanded(v);
+  };
+
+  // Keep the shared flag honest when the monogram block unmounts (back at
+  // intro): the local `expanded` state resets on remount, the channel must too.
+  // (Plain mutable-channel write — not setState — so this effect never renders.)
+  useEffect(() => {
+    if (atIntro) ui.monogramExpanded = false;
+  }, [atIntro]);
 
   return (
     <>
@@ -110,12 +124,12 @@ export default function IntroBlock(): JSX.Element {
             alignItems: "center",
             paddingLeft: 14,
           }}
-          onMouseEnter={() => setExpanded(true)}
-          onMouseLeave={() => setExpanded(false)}
-          onFocusCapture={() => setExpanded(true)}
+          onMouseEnter={() => setMonogram(true)}
+          onMouseLeave={() => setMonogram(false)}
+          onFocusCapture={() => setMonogram(true)}
           onBlurCapture={(e) => {
             const next = e.relatedTarget as Node | null;
-            if (!next || !e.currentTarget.contains(next)) setExpanded(false);
+            if (!next || !e.currentTarget.contains(next)) setMonogram(false);
           }}
         >
           {/* The monogram button: two initials that expand in place into the
@@ -129,7 +143,7 @@ export default function IntroBlock(): JSX.Element {
               expanded ? "collapse" : "expand"
             } name`}
             aria-expanded={expanded}
-            onClick={() => setExpanded((v) => !v)}
+            onClick={() => setMonogram(!expanded)}
             className="mono-btn"
             style={{
               display: "inline-flex",

@@ -9,6 +9,7 @@ import IntroBlock from "@/components/IntroBlock";
 import SectionPanel from "@/components/SectionPanel";
 import ContactForm from "@/components/ContactForm";
 import Chart from "@/components/Chart";
+import StateReadout from "@/components/StateReadout";
 import { sceneActions, type PulseState } from "@/lib/sceneStore";
 
 // The particle scene owns the R3F <Canvas> and must never render on the
@@ -39,8 +40,10 @@ export default function Home() {
     };
   }, []);
 
+  // Transparent root: the matte cream gradient (globals.css, on html/body) is
+  // the page ground — nothing here may paint an opaque full-viewport fill.
   return (
-    <div className="fixed inset-0 overflow-hidden bg-[#efe7d6]">
+    <div className="fixed inset-0 overflow-hidden">
       {/* Paper texture + whisper-quiet cursor response (was Fluoroscopy). */}
       <Fluoroscopy />
       <PointerBridge />
@@ -52,6 +55,8 @@ export default function Home() {
       <ContactForm />
       {/* Unified medical chart station (replaces the old Console terminal). */}
       <Chart />
+      {/* Quiet mono micro-readout of the live scene state, bottom-right. */}
+      <StateReadout />
     </div>
   );
 }

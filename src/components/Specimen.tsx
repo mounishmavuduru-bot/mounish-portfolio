@@ -37,8 +37,9 @@ const NAME_TEXT = "Mounish Mavuduru";
 const NAME_WORLD_HEIGHT = 3.0;
 const LETTER_WORLD_HEIGHT = 3.4;
 
-// atlas tokens (mirrors globals @theme; used for DOM overlays only)
-const PAPER = "#efe7d6";
+// atlas tokens (mirrors globals @theme; used for DOM overlays only). No PAPER
+// fill here anymore: the wrapper + GL canvas stay transparent so the matte
+// cream gradient painted on html/body (globals.css) shows through.
 const INK = "#1a1714";
 const OXBLOOD = "#7c1f1c";
 
@@ -298,6 +299,9 @@ function PointCloud({
   );
   const lastActive = useRef(0);
   const lastReportedProgress = useRef(-1);
+  // Eased dim factor for the showcase overlay: → 0.22 while the panel is
+  // open, → 1 when closed. Mutated in useFrame only (no per-frame setState).
+  const panelDim = useRef(1);
 
   const tmp = useMemo(
     () => ({
@@ -418,8 +422,21 @@ function PointCloud({
     // to the sharp DOM letter form. Driven directly from the eased scrollPos,
     // so reversing the scroll dissolves the form back into full-opacity dots.
     const handoverF = Math.min(1, Math.max(0, pos - (LAST - 1)));
-    material.uniforms.uGlobalAlpha.value =
-      1 - 0.82 * smoothstep(0.6, 1, handoverF);
+    const handoverAlpha = 1 - 0.82 * smoothstep(0.6, 1, handoverF);
+
+    // --- showcase dim: organ recedes behind the open panel overlay -------
+    // scroll.paused mirrors panel.open (synced in Specimen's effect), so the
+    // frame loop reuses the same channel as the scroll-morph pause instead of
+    // touching the store per frame. Ease toward 0.22 while open, back to 1
+    // when closed, then compose with the contact-handover fade via min() so
+    // both behaviors coexist: closed → dim = 1 → handover alpha unchanged;
+    // open (organ states only, where handover = 1) → alpha settles at 0.22.
+    const dimTarget = s.paused ? 0.22 : 1;
+    panelDim.current += (dimTarget - panelDim.current) * Math.min(1, dt * 5);
+    material.uniforms.uGlobalAlpha.value = Math.min(
+      handoverAlpha,
+      panelDim.current,
+    );
 
     // --- pointer physics in the rotating group's local space ------------
     // Map the global pointer (clientX/Y) into NDC over the canvas rect, then
@@ -821,10 +838,7 @@ export default function Specimen() {
   );
 
   return (
-    <div
-      className="fixed inset-0 overflow-hidden"
-      style={{ background: PAPER }}
-    >
+    <div className="fixed inset-0 overflow-hidden">
       {/* canvas wrapper: pointer/click-vs-drag detection lives here */}
       <div
         ref={wrapperRef}
@@ -840,10 +854,11 @@ export default function Specimen() {
               near: 0.1,
               far: CAMERA_Z * 6,
             }}
-            gl={{ antialias: true }}
+            gl={{ antialias: true, alpha: true }}
             onCreated={measure}
           >
-            <color attach="background" args={[PAPER]} />
+            {/* No <color attach="background"> — the GL clear stays transparent
+                (alpha) so the CSS gradient ground reads through the canvas. */}
             <PointCloud
               sim={sim}
               clouds={clouds}

@@ -8,9 +8,8 @@
  * letter that condenses out of them. No outer card box — the form IS the sheet
  * area: a centred portrait region matching the particle sheet's aspect, with
  * Spectral text on ruled 1px underlines (no boxed inputs), small mono
- * superscript labels, an oxblood postmark-style send stamp (sharp corners,
- * -2deg), a hairline stamp square top-right echoing the particle stamp, and a
- * quiet mailto line pinned to the sheet's foot.
+ * superscript labels, and a quiet mono send control on a hairline underline
+ * anchoring the sheet's foot.
  *
  * Coalesce: f = clamp(progress - 3, 0, 1) from the scene store. The sheet's
  * opacity is smoothstep(0.55→0.95 of f) and it scales 0.985→1, scrubbed
@@ -33,7 +32,6 @@ import {
   type FormEvent,
 } from "react";
 import { useScene } from "@/lib/sceneStore";
-import { EMAIL } from "@/data/content";
 
 const MONO =
   'var(--font-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace';
@@ -151,11 +149,11 @@ function LetterSheet() {
       setStatus("error");
       setError(
         (errData && typeof errData.error === "string" && errData.error) ||
-          "could not send your message. please try again, or email directly.",
+          "could not send your message. please try again.",
       );
     } catch {
       setStatus("error");
-      setError("could not reach the server. please email directly instead.");
+      setError("could not reach the server. please try again in a moment.");
     }
   }
 
@@ -173,11 +171,6 @@ function LetterSheet() {
           pointerEvents: interactive ? "auto" : "none",
         }}
       >
-        {/* Stamp square — echoes the particle stamp, top-right of the sheet. */}
-        <div aria-hidden style={stampStyle}>
-          <span style={stampTextStyle}>mm</span>
-        </div>
-
         <div className="cf-row" style={{ ...rowStyle(0, staged), ...headStyle }}>
           <h2 style={titleStyle}>Get in touch</h2>
           <p style={leadStyle}>
@@ -306,29 +299,16 @@ function LetterSheet() {
             >
               <button
                 type="submit"
-                className="cf-stamp-btn"
+                className="cf-send-btn"
                 disabled={submitting}
                 style={{
-                  ...postmarkStyle,
+                  ...sendButtonStyle,
                   opacity: submitting ? 0.6 : 1,
                   cursor: submitting ? "default" : "pointer",
                 }}
               >
                 {submitting ? "sending…" : "send"}
               </button>
-            </div>
-
-            <div
-              className="cf-row"
-              style={{ ...rowStyle(5, staged), ...footStyle }}
-            >
-              <a
-                href={`mailto:${EMAIL}`}
-                style={mailtoStyle}
-                className="cf-mailto"
-              >
-                or email {EMAIL}
-              </a>
             </div>
           </form>
         )}
@@ -356,19 +336,15 @@ function LetterSheet() {
           outline: 1px solid var(--oxblood);
           outline-offset: 3px;
         }
-        .cf-stamp-btn:focus-visible,
-        .cf-ghost:focus-visible,
-        .cf-mailto:focus-visible {
+        .cf-send-btn:focus-visible,
+        .cf-ghost:focus-visible {
           outline: 1px solid var(--oxblood);
           outline-offset: 2px;
         }
+        .cf-send-btn:hover,
         .cf-ghost:hover {
           color: var(--ink);
           border-bottom-color: var(--oxblood);
-        }
-        .cf-mailto:hover,
-        .cf-mailto:focus-visible {
-          color: var(--oxblood);
         }
         @media (prefers-reduced-motion: reduce) {
           .cf-row {
@@ -473,8 +449,6 @@ const sheetStyle: CSSProperties = {
 };
 
 const headStyle: CSSProperties = {
-  // Clear the stamp square at top-right.
-  paddingRight: 64,
   marginBottom: 18,
 };
 
@@ -553,39 +527,28 @@ const textareaStyle: CSSProperties = {
   resize: "vertical",
 };
 
+// The send row anchors the sheet's foot now that the mailto line is gone.
 const actionsStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  marginTop: 4,
-};
-
-// The postmark — oxblood stamp, sharp corners, slight cant.
-const postmarkStyle: CSSProperties = {
-  background: "var(--oxblood)",
-  color: "var(--paper)",
-  border: "none",
-  borderRadius: 0,
-  padding: "9px 18px",
-  fontFamily: MONO,
-  fontSize: "0.62rem",
-  letterSpacing: "0.18em",
-  textTransform: "uppercase",
-  transform: "rotate(-2deg)",
-  transformOrigin: "center",
-};
-
-const footStyle: CSSProperties = {
   marginTop: "auto",
   paddingTop: 16,
 };
 
-const mailtoStyle: CSSProperties = {
+// The send control — quiet atlas style: mono uppercase on a hairline
+// underline, matching the ghost button. No block fill, no rotation.
+const sendButtonStyle: CSSProperties = {
+  background: "transparent",
+  color: "var(--ink-soft)",
+  border: "none",
+  borderBottom: "1px solid var(--line)",
+  borderRadius: 0,
+  padding: "2px 0 3px",
   fontFamily: MONO,
-  fontSize: "0.6rem",
-  letterSpacing: "0.04em",
-  color: "var(--sepia)",
-  textDecoration: "none",
-  transition: "color 150ms linear",
+  fontSize: "0.62rem",
+  letterSpacing: "0.18em",
+  textTransform: "uppercase",
+  transition: "color 150ms linear, border-color 150ms linear",
 };
 
 const errorStyle: CSSProperties = {
@@ -633,28 +596,6 @@ const ghostButtonStyle: CSSProperties = {
   textTransform: "lowercase",
   cursor: "pointer",
   transition: "color 150ms linear, border-color 150ms linear",
-};
-
-// Hairline stamp square, top-right — the DOM echo of the particle stamp.
-const stampStyle: CSSProperties = {
-  position: "absolute",
-  top: 22,
-  right: 26,
-  width: 44,
-  height: 44,
-  border: "1px solid var(--line)",
-  borderRadius: 0,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-const stampTextStyle: CSSProperties = {
-  fontFamily: MONO,
-  fontSize: "0.55rem",
-  letterSpacing: "0.14em",
-  textTransform: "lowercase",
-  color: "var(--sepia)",
 };
 
 // Visually-hidden honeypot: off-screen, zero footprint, not display:none (some
