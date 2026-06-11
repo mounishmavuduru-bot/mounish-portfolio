@@ -1,12 +1,15 @@
 /**
- * /api/console — the fluoroscopy terminal backend.
+ * /api/console — the CHART station's ORDERS backend.
  *
- *   POST { cmd }   → { lines: string[] }
- *   GET  ?cmd=...  → { lines: string[] }  (convenience)
+ *   POST { cmd }   → { lines: string[], ekg?: EkgEvent }
+ *   GET  ?cmd=...  → { lines: string[], ekg?: EkgEvent }  (convenience)
  *
- * Stateless except for the `pulse` / `leave` commands, which read/write the
- * persistent pulse store. Everything else is built from content.ts. Unknown
- * commands return a helpful error line. No env/secrets are ever exposed.
+ * Stateless except for the `pulse` / `sign` (alias `leave`) commands, which
+ * read/write the persistent pulse store. Everything else is built from
+ * content.ts. The optional `ekg` field is a fire-and-forget EKG effect the
+ * client forwards to emitEkg() so an order can jolt the rhythm strip — the
+ * easter eggs ("code blue", "defib", "tachy", …) live here. Unknown commands
+ * return a helpful line. No env/secrets are ever exposed.
  */
 
 import {
@@ -19,6 +22,7 @@ import {
   positions,
 } from "@/data/content";
 import { getPulses, addPulse } from "@/lib/pulseStore";
+import type { EkgEvent } from "@/lib/sceneStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,8 +30,14 @@ export const dynamic = "force-dynamic";
 const MAX_BODY = 2_048;
 const MAX_CMD = 200;
 
+/** A command result: lines to print, plus an optional EKG effect to emit. */
+interface CmdResult {
+  lines: string[];
+  ekg?: EkgEvent;
+}
+
 const HELP_LINES: string[] = [
-  "available commands:",
+  "orders — available commands:",
   "  help          this list",
   "  whoami        who is mounish",
   "  projects      selected projects + research",
@@ -35,8 +45,10 @@ const HELP_LINES: string[] = [
   "  positions     roles held",
   "  contact       github, linkedin, email",
   "  pulse         live global pulse count",
-  "  leave <msg>   sign the guestbook (adds a pulse)",
-  "  clear         clear the scrollback",
+  "  sign <msg>    sign the logbook (adds a pulse)",
+  "  auscultate    listen to the current specimen",
+  "  order <x>     place a standing order",
+  "  clear         clear the chart notes",
 ];
 
 function projectsLines(): string[] {
@@ -76,6 +88,23 @@ function whoamiLines(): string[] {
   ];
 }
 
+/**
+ * Auscultation notes — points of interest, a couple tied to real work. Mirrors
+ * the chart's auscultation tab so the order line and the tab agree. Content is
+ * derived from content.ts where it references real projects/research.
+ */
+function auscultateLines(): string[] {
+  const heart = projects[0]?.name ?? "the work";
+  const research = projects[1]?.name ?? "the research";
+  return [
+    "auscultation — notable points:",
+    `  apex     a steady drive — ${heart}.`,
+    `  base     ongoing inquiry — ${research}.`,
+    "  margin   a surgeon's hands, still in training.",
+    "  (open the auscultation tab to listen point by point.)",
+  ];
+}
+
 async function pulseLines(): Promise<string[]> {
   const state = await getPulses();
   const lines = [
@@ -83,61 +112,132 @@ async function pulseLines(): Promise<string[]> {
     state.persisted ? "store: persistent" : "store: in-memory (not persisted)",
   ];
   if (state.recent.length) {
-    lines.push("recent:");
+    lines.push("recent signatures:");
     for (const r of state.recent) lines.push(`  ${r.msg}`);
   }
   return lines;
 }
 
-async function leaveLines(message: string): Promise<string[]> {
+async function signLines(message: string): Promise<string[]> {
   const msg = message.trim();
   if (!msg) {
-    return ["usage: leave <message>"];
+    return ["usage: sign <message>"];
   }
   const state = await addPulse(msg);
   return [
-    "signed.",
+    "signed the logbook.",
     `pulse count: ${state.count}`,
     state.persisted ? "store: persistent" : "store: in-memory (not persisted)",
   ];
 }
 
+function orderLines(what: string): string[] {
+  const item = what.trim();
+  if (!item) {
+    return [
+      "usage: order <x>",
+      "try: order coffee, order labs, order consult, order rest",
+    ];
+  }
+  const key = item.toLowerCase();
+  const canned: Record<string, string> = {
+    coffee: "order placed: one coffee, stat. the on-call thanks you.",
+    labs: "order placed: routine labs drawn; results pending.",
+    consult: "order placed: cardiothoracic consult requested.",
+    rest: "order placed: rest and reassess. wise.",
+    "stat dose": "order placed: stat dose charted.",
+  };
+  return [canned[key] ?? `order placed: ${item}. noted in the chart.`];
+}
+
+const SUDO_REFUSAL =
+  "nice try. this chart has no root — try 'help' instead.";
+
 /**
- * Resolve a raw command string to its output lines. `clear` is a client-side
- * sentinel: the UI clears the scrollback on seeing the marker.
+ * Resolve a raw command string to its lines + optional EKG effect. `clear` is a
+ * client-side sentinel: the UI clears the chart notes on seeing the marker.
  */
-async function run(rawCmd: string): Promise<string[]> {
+async function run(rawCmd: string): Promise<CmdResult> {
   const cmd = rawCmd.trim().slice(0, MAX_CMD);
-  if (!cmd) return HELP_LINES;
+  if (!cmd) return { lines: HELP_LINES };
+
+  const lower = cmd.toLowerCase();
+
+  // --- Easter eggs (matched before the verb switch) -----------------------
+  // Tasteful, medical, sentence case, no emoji. Each emits an EKG effect the
+  // client forwards to emitEkg(). "code blue"/"flatline" flatline then revive
+  // with a strong ectopic; the EkgMonitor owns the revive timing, so we hand it
+  // "flatline" and a calm line.
+  if (lower === "code blue" || lower === "flatline" || lower === "asystole") {
+    return {
+      lines:
+        lower === "asystole"
+          ? ["asystole. a flat line — then, a beat. the patient is fine."]
+          : [
+              "code blue. the monitor goes flat…",
+              "compressions, a breath — and a beat returns.",
+            ],
+      ekg: "flatline",
+    };
+  }
+  if (lower === "defib" || lower === "clear!" || lower === "shock") {
+    return {
+      lines: ["charging… clear. one clean jolt across the strip."],
+      ekg: "defib",
+    };
+  }
+  if (lower === "caffeine" || lower === "tachy" || lower === "epi") {
+    return {
+      lines: ["rate climbing — a brief tachycardia. it will settle."],
+      ekg: "tachy",
+    };
+  }
+  if (lower === "normal" || lower === "sinus") {
+    return { lines: ["back to a normal sinus rhythm."], ekg: "normal" };
+  }
 
   const spaceIdx = cmd.indexOf(" ");
   const verb = (spaceIdx === -1 ? cmd : cmd.slice(0, spaceIdx)).toLowerCase();
   const rest = spaceIdx === -1 ? "" : cmd.slice(spaceIdx + 1);
 
+  if (verb === "sudo") {
+    return { lines: [SUDO_REFUSAL] };
+  }
+
   switch (verb) {
     case "help":
-      return HELP_LINES;
+      return { lines: HELP_LINES };
     case "whoami":
-      return whoamiLines();
+      return { lines: whoamiLines() };
     case "projects":
-      return projectsLines();
+      return { lines: projectsLines() };
     case "achievements":
-      return achievementsLines();
+      return { lines: achievementsLines() };
     case "positions":
-      return positionsLines();
+      return { lines: positionsLines() };
     case "contact":
-      return contactLines();
+      return { lines: contactLines() };
     case "pulse":
-      return pulseLines();
+      return { lines: await pulseLines() };
+    // `sign` is the chart-era verb; keep `leave` as a back-compat alias.
+    case "sign":
     case "leave":
-      return leaveLines(rest);
+      return { lines: await signLines(rest) };
+    case "auscultate":
+    case "auscultation":
+      return { lines: auscultateLines() };
+    case "order":
+    case "orders":
+      return { lines: orderLines(rest) };
     case "clear":
-      return ["::clear::"]; // sentinel the client recognizes
+      return { lines: ["::clear::"] }; // sentinel the client recognizes
     default:
-      return [
-        `unknown command: ${verb}`,
-        "type 'help' for the list of commands.",
-      ];
+      return {
+        lines: [
+          `unknown order: ${verb}`,
+          "type 'help' for the list of commands.",
+        ],
+      };
   }
 }
 
@@ -167,13 +267,13 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400 },
     );
   }
-  const lines = await run(cmd);
-  return Response.json({ lines });
+  const result = await run(cmd);
+  return Response.json(result);
 }
 
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const cmd = url.searchParams.get("cmd") ?? "";
-  const lines = await run(cmd);
-  return Response.json({ lines });
+  const result = await run(cmd);
+  return Response.json(result);
 }

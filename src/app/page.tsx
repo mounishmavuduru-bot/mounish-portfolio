@@ -7,7 +7,8 @@ import PointerBridge from "@/components/PointerBridge";
 import EkgMonitor from "@/components/EkgMonitor";
 import IntroBlock from "@/components/IntroBlock";
 import SectionPanel from "@/components/SectionPanel";
-import Console from "@/components/Console";
+import ContactForm from "@/components/ContactForm";
+import Chart from "@/components/Chart";
 import { sceneActions, type PulseState } from "@/lib/sceneStore";
 
 // The particle scene owns the R3F <Canvas> and must never render on the
@@ -39,14 +40,18 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-[#070808]">
+    <div className="fixed inset-0 overflow-hidden bg-[#efe7d6]">
+      {/* Paper texture + whisper-quiet cursor response (was Fluoroscopy). */}
       <Fluoroscopy />
       <PointerBridge />
       <EkgMonitor />
       <Specimen />
       <IntroBlock />
       <SectionPanel />
-      <Console />
+      {/* Self-gates on useScene index === 4 (contact / envelope state). */}
+      <ContactForm />
+      {/* Unified medical chart station (replaces the old Console terminal). */}
+      <Chart />
     </div>
   );
 }

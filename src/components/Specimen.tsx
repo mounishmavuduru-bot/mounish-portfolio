@@ -11,55 +11,71 @@ import {
   ORGAN_WORLD,
   loadOrganCloud,
 } from "@/lib/organData";
-import { buildNameCloud } from "@/lib/nameCloud";
+import { buildNameCloud, buildEnvelopeCloud } from "@/lib/nameCloud";
 import { ParticleSim, type PointerState } from "@/lib/particleSim";
 import { STATES, useScene, sceneActions, pointer } from "@/lib/sceneStore";
 import { TAGLINE } from "@/data/content";
 
 // ---------------------------------------------------------------------------
-// Camera. fov 42; distance frames a height-ORGAN_WORLD organ at ~120% (so the
-// organ overflows the edges and feels immersive). The intro name cloud is built
-// at worldHeight≈3, so it simply occupies the middle third of the frame and
-// reads fully — exactly what the contract asks for.
+// ANATOMICAL ATLAS — particles are DARK INK STIPPLE on a CREAM PAPER ground.
+// Renderer stays NormalBlending (never additive — additive washes out on
+// light). Depth shading is INVERTED for paper: nearer points read DARKER and
+// MORE OPAQUE (heavily inked), farther points read LIGHTER and fade toward the
+// cream. The organ silhouettes therefore read as crisp engraving plates.
 // ---------------------------------------------------------------------------
+
+// Camera. fov 42; distance frames a height-ORGAN_WORLD organ at ~120% (so the
+// organ overflows the edges and feels immersive). The name + envelope clouds
+// are built at worldHeight≈3, so they occupy the middle of the frame and read
+// fully — centered, not clipped — with auto-rotation OFF.
 const FOV = 42;
 const FIT_DISTANCE = (ORGAN_WORLD * 0.5) / Math.tan(((FOV / 2) * Math.PI) / 180);
 const CAMERA_Z = FIT_DISTANCE * 0.82; // ~120% overflow for the organ
 
 const NAME_TEXT = "Mounish Mavuduru";
 const NAME_WORLD_HEIGHT = 3.0;
+const ENVELOPE_WORLD_HEIGHT = 3.0;
 
-const BONE = "#e8e3d8";
+// atlas tokens (mirrors globals @theme; used for DOM overlays only)
+const PAPER = "#efe7d6";
+const INK = "#1a1714";
+const OXBLOOD = "#7c1f1c";
 
-const LAST = STATES.length - 1; // 3 (liver)
+const LAST = STATES.length - 1; // 4 (contact) once the 5th state lands
 
 // ---------------------------------------------------------------------------
-// Palette per state, as [lo, hi] mixed by pow(seed) in the fragment shader.
-// Crossfaded each frame toward the active state's palette.
-//   intro : bone -> white (the name reads bright on black)
-//   heart : blood -> bone flecks
-//   brain : BRIGHT cool ivory, high contrast so the folded form reads clearly
-//   liver : desaturated oxblood -> warm bone
+// Palette per state, as [lo, hi] mixed by pow(seed) in the fragment shader, on
+// cream paper. lo = the heavily-inked dark tone, hi = the lighter fleck. With
+// inverted depth shading, NEAR points push toward `lo` (darkest/most opaque)
+// and FAR points relax toward `hi` and fade toward the paper.
+//   intro name : ink #1a1714 → #4a4038
+//   heart      : oxblood #7c1f1c → ink #1a1714
+//   brain      : ink #1a1714 → sepia #6f6354  (high contrast on cream)
+//   liver      : deep oxblood-brown #5a241c → ink #1a1714
+//   contact    : ink #1a1714 → #4a4038
 // ---------------------------------------------------------------------------
 type Rgb = [number, number, number];
 
-const INTRO_LO: Rgb = [0.82, 0.8, 0.76]; // warm bone
-const INTRO_HI: Rgb = [1.0, 1.0, 0.99]; // near white
-const HEART_LO: Rgb = [0.651, 0.106, 0.106]; // blood #a61b1b
-const HEART_HI: Rgb = [0.91, 0.89, 0.847]; // bone #e8e3d8 flecks
-// Brighter, higher-contrast brain so the heavily-folded mesh reads as a form
-// instead of grey static: cool steel #b9c0c4 -> bright ivory #f2efe6.
-const BRAIN_LO: Rgb = [0.725, 0.753, 0.769]; // #b9c0c4
-const BRAIN_HI: Rgb = [0.949, 0.937, 0.902]; // #f2efe6
-const LIVER_LO: Rgb = [0.494, 0.169, 0.141]; // desaturated oxblood #7e2b24
-const LIVER_HI: Rgb = [0.725, 0.663, 0.604]; // #b9a99a
+const INTRO_LO: Rgb = [0.102, 0.09, 0.078]; // #1a1714 ink
+const INTRO_HI: Rgb = [0.29, 0.251, 0.22]; // #4a4038
+const HEART_LO: Rgb = [0.486, 0.122, 0.11]; // #7c1f1c oxblood
+const HEART_HI: Rgb = [0.102, 0.09, 0.078]; // #1a1714 ink
+const BRAIN_LO: Rgb = [0.102, 0.09, 0.078]; // #1a1714 ink
+const BRAIN_HI: Rgb = [0.435, 0.388, 0.329]; // #6f6354 sepia
+const LIVER_LO: Rgb = [0.353, 0.141, 0.11]; // #5a241c deep oxblood-brown
+const LIVER_HI: Rgb = [0.102, 0.09, 0.078]; // #1a1714 ink
+const CONTACT_LO: Rgb = [0.102, 0.09, 0.078]; // #1a1714 ink
+const CONTACT_HI: Rgb = [0.29, 0.251, 0.22]; // #4a4038
 
-// Indexed by STATE order: intro, heart, brain, liver.
+// Indexed by STATE order: intro, heart, brain, liver, contact.
+// `base` is the per-state base opacity; ink stipple on cream wants fairly high
+// opacity so the dark dots read crisply rather than washing into the paper.
 const PALETTES: { lo: Rgb; hi: Rgb; base: number }[] = [
-  { lo: INTRO_LO, hi: INTRO_HI, base: 0.62 }, // intro: bright, readable
-  { lo: HEART_LO, hi: HEART_HI, base: 0.5 },
-  { lo: BRAIN_LO, hi: BRAIN_HI, base: 0.66 }, // brain: higher base alpha so it reads
-  { lo: LIVER_LO, hi: LIVER_HI, base: 0.5 },
+  { lo: INTRO_LO, hi: INTRO_HI, base: 0.78 }, // intro: dark, readable name
+  { lo: HEART_LO, hi: HEART_HI, base: 0.74 },
+  { lo: BRAIN_LO, hi: BRAIN_HI, base: 0.74 }, // brain: high contrast on cream
+  { lo: LIVER_LO, hi: LIVER_HI, base: 0.74 },
+  { lo: CONTACT_LO, hi: CONTACT_HI, base: 0.78 }, // contact: dark envelope
 ];
 
 function lerpRgb(out: Rgb, a: Rgb, b: Rgb, t: number) {
@@ -71,9 +87,9 @@ function lerpRgb(out: Rgb, a: Rgb, b: Rgb, t: number) {
 // ---------------------------------------------------------------------------
 // Shaders.
 // Vertex: per-seed shimmer + depth-attenuated point size, and it forwards the
-// view-space depth so the fragment shader can brighten near/front-facing points
-// (this is the brain-clarity fix: closer points read brighter, so the folded
-// form separates from the background instead of flattening into static).
+// view-space depth so the fragment shader can INK near points (paper inversion):
+// closer points = darker + more opaque, farther points = lighter + fading to
+// cream. This is what makes the organ silhouettes read as engraving plates.
 // ---------------------------------------------------------------------------
 const VERT = /* glsl */ `
 attribute float aSeed;
@@ -83,7 +99,7 @@ uniform float uPixelRatio;
 uniform float uFocusZ;
 
 varying float vSeed;
-varying float vDepth; // 0 = far, 1 = near (front-facing toward the camera)
+varying float vDepth; // 0 = far, 1 = near (toward the camera)
 
 void main() {
   vSeed = aSeed;
@@ -111,16 +127,18 @@ void main() {
 }
 `;
 
-// Fragment: soft round alpha, sparse high-color flecks, NormalBlending. The
-// uBrightFront uniform mixes in depth-based brightening (front points brighter)
-// — restrained for organs, stronger for the brain so it reads as a clear form.
+// Fragment: soft round alpha, sparse flecks, NormalBlending — INVERTED paper
+// shading. uInkFront drives the inversion: near points (vDepth→1) push toward
+// the DARK `uColorLo` and gain opacity; far points relax toward the lighter
+// `uColorHi` and fade toward the cream. Most particles carry the inked base
+// color; tail flecks (high seed) lighten so the stipple has tonal variation.
 const FRAG = /* glsl */ `
 precision mediump float;
 
-uniform vec3 uColorLo;
-uniform vec3 uColorHi;
-uniform float uBaseAlpha;   // per-state base opacity
-uniform float uBrightFront; // 0..1 depth-brightness strength
+uniform vec3 uColorLo;       // dark, heavily-inked tone (near)
+uniform vec3 uColorHi;       // lighter fleck tone (far)
+uniform float uBaseAlpha;    // per-state base opacity
+uniform float uInkFront;     // 0..1 strength of the paper depth inversion
 
 varying float vSeed;
 varying float vDepth;
@@ -133,15 +151,16 @@ void main() {
   // soft round alpha
   float core = smoothstep(0.5, 0.16, d);
 
-  // front-facing points get more alpha so closer surfaces read as solid form
-  float front = mix(1.0, 0.55 + 0.85 * vDepth, uBrightFront);
-  float alpha = core * uBaseAlpha * (0.55 + 0.45 * vSeed) * front;
+  // INVERTED for paper: near points (vDepth high) get MORE alpha (heavier ink);
+  // far points get LESS alpha and fade toward the cream ground.
+  float depthAlpha = mix(1.0, 0.45 + 0.85 * vDepth, uInkFront);
+  float alpha = core * uBaseAlpha * (0.6 + 0.4 * vSeed) * depthAlpha;
 
-  // sparse high-color flecks: most particles stay on the base color, tail
-  // flecks toward the light tone. Near points also lift toward the high color
-  // so the front surface of the form brightens (the readable highlight).
-  float fleck = pow(vSeed, 3.0) * 0.85;
-  fleck = clamp(fleck + uBrightFront * vDepth * 0.5, 0.0, 1.0);
+  // Tone: most particles stay on the dark inked base (uColorLo); sparse high-
+  // seed flecks lighten toward uColorHi for stipple variation. Far points also
+  // drift lighter (toward uColorHi) so depth reads as ink density on paper.
+  float fleck = pow(vSeed, 3.0) * 0.7;
+  fleck = clamp(fleck + uInkFront * (1.0 - vDepth) * 0.5, 0.0, 1.0);
   vec3 col = mix(uColorLo, uColorHi, fleck);
 
   gl_FragColor = vec4(col, alpha);
@@ -169,7 +188,7 @@ interface CanvasRect {
 }
 
 // ---------------------------------------------------------------------------
-// The point cloud. Owns geometry/material, runs the sim, morphs across the four
+// The point cloud. Owns geometry/material, runs the sim, morphs across the five
 // state clouds, crossfades color/alpha, reports the active index/progress, and
 // does the pointer physics by reading the global pointer channel.
 // ---------------------------------------------------------------------------
@@ -206,17 +225,14 @@ function PointCloud({
       seeds[i] = ((i * 2654435761) % 4294967296) / 4294967296;
     }
     g.setAttribute("aSeed", new THREE.BufferAttribute(seeds, 1));
-    g.boundingSphere = new THREE.Sphere(
-      new THREE.Vector3(0, 0, 0),
-      ORGAN_WORLD,
-    );
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), ORGAN_WORLD);
 
     const m = new THREE.ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
       transparent: true,
       depthWrite: false,
-      blending: THREE.NormalBlending,
+      blending: THREE.NormalBlending, // NEVER additive — washes out on cream
       uniforms: {
         uTime: { value: 0 },
         uPixelRatio: { value: 1 },
@@ -228,7 +244,7 @@ function PointCloud({
           value: new THREE.Color(INTRO_HI[0], INTRO_HI[1], INTRO_HI[2]),
         },
         uBaseAlpha: { value: PALETTES[0].base },
-        uBrightFront: { value: 0 },
+        uInkFront: { value: 0 },
       },
     });
     return { geometry: g, material: m };
@@ -259,7 +275,7 @@ function PointCloud({
       lo: [...INTRO_LO] as Rgb,
       hi: [...INTRO_HI] as Rgb,
       base: PALETTES[0].base,
-      bright: 0,
+      ink: 0,
     }),
     [],
   );
@@ -298,6 +314,7 @@ function PointCloud({
       }
       s.scrollPos += (s.targetScroll - s.scrollPos) * Math.min(1, dt * 7);
     }
+    // clamp the morph at both ends of the five-state range [0..LAST]
     s.scrollPos = Math.min(LAST, Math.max(0, s.scrollPos));
 
     // build the per-particle blend cloud[i] -> cloud[i+1]
@@ -334,22 +351,25 @@ function PointCloud({
       if (Math.abs(pos - active) < 1e-4) sceneActions.setIndex(active);
     }
 
-    // --- color / alpha / brightness crossfade toward the active palette --
+    // --- color / alpha / ink-depth crossfade toward the active palette ---
     const pal = PALETTES[active];
     const cLerp = Math.min(1, dt * 4);
     lerpRgb(colorAcc.lo, colorAcc.lo, pal.lo, cLerp);
     lerpRgb(colorAcc.hi, colorAcc.hi, pal.hi, cLerp);
     colorAcc.base += (pal.base - colorAcc.base) * cLerp;
-    // brain gets the strongest front-brightness; others get a restrained touch
-    const targetBright = active === 2 ? 1.0 : active === 0 ? 0.25 : 0.45;
-    colorAcc.bright += (targetBright - colorAcc.bright) * cLerp;
+    // Inverted paper depth applies to every state; organs get the strongest
+    // inking so their near surfaces read as solid engraving, the flat name and
+    // envelope plates get a lighter touch so they stay evenly legible.
+    const isFlatPlate = active === 0 || active === LAST;
+    const targetInk = isFlatPlate ? 0.4 : 0.85;
+    colorAcc.ink += (targetInk - colorAcc.ink) * cLerp;
 
     const uLo = material.uniforms.uColorLo.value as THREE.Color;
     const uHi = material.uniforms.uColorHi.value as THREE.Color;
     uLo.setRGB(colorAcc.lo[0], colorAcc.lo[1], colorAcc.lo[2]);
     uHi.setRGB(colorAcc.hi[0], colorAcc.hi[1], colorAcc.hi[2]);
     material.uniforms.uBaseAlpha.value = colorAcc.base;
-    material.uniforms.uBrightFront.value = colorAcc.bright;
+    material.uniforms.uInkFront.value = colorAcc.ink;
 
     // --- pointer physics in the rotating group's local space ------------
     // Map the global pointer (clientX/Y) into NDC over the canvas rect, then
@@ -414,11 +434,12 @@ function PointCloud({
   return (
     <group ref={groupRef}>
       <points geometry={geometry} material={material} frustumCulled={false} />
+      {/* NO auto-rotation in any state: the intro name stays framed/centered at
+          rest and never drifts off-screen. Manual drag-to-rotate only. */}
       <OrbitControls
         enableZoom={false}
         enablePan={false}
-        autoRotate
-        autoRotateSpeed={0.85}
+        autoRotate={false}
         enableDamping
         dampingFactor={0.08}
         onStart={onRotateStart}
@@ -512,9 +533,10 @@ export default function Specimen() {
   }, [status, measure]);
 
   // -------------------------------------------------------------------------
-  // Build the four state clouds: intro name (runtime) + three organs (fetched).
-  // The name cloud is rebuilt after fonts are ready and on resize so the bold
-  // Bricolage glyphs render crisply at the current DPR.
+  // Build the five state clouds: intro name (runtime) + three organs (fetched)
+  // + the contact envelope (runtime). The name + envelope clouds are rebuilt
+  // after fonts settle / on resize so glyph + stroke metrics are final at DPR.
+  // Clouds land in STATES order: [name, heart, brain, liver, envelope].
   // -------------------------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
@@ -529,9 +551,13 @@ export default function Specimen() {
     };
 
     // Build the name cloud after fonts settle so glyph metrics are final.
-    const nameReady: Promise<Float32Array> = (
-      document.fonts?.ready ?? Promise.resolve()
-    ).then(() => buildNameCloud(NAME_TEXT, count, NAME_WORLD_HEIGHT));
+    const fontsReady = document.fonts?.ready ?? Promise.resolve();
+    const nameReady: Promise<Float32Array> = fontsReady.then(() =>
+      buildNameCloud(NAME_TEXT, count, NAME_WORLD_HEIGHT),
+    );
+    const envelopeReady: Promise<Float32Array> = fontsReady.then(() =>
+      buildEnvelopeCloud(count, ENVELOPE_WORLD_HEIGHT),
+    );
 
     Promise.all([
       nameReady,
@@ -541,10 +567,12 @@ export default function Specimen() {
           report();
         }),
       ),
+      envelopeReady,
     ])
       .then((loaded) => {
         if (cancelled) return;
-        // loaded = [name, heart, brain, liver] — already in STATES order.
+        // loaded = [name, heart, brain, liver, envelope] — STATES order, with
+        // the runtime envelope appended last to match clouds[LAST] = contact.
         const next = new ParticleSim(count);
         next.setTargets(loaded[0]); // seed with the intro name cloud
         next.positions.set(loaded[0]); // start settled, not springing from 0
@@ -561,18 +589,20 @@ export default function Specimen() {
     };
   }, [attempt]);
 
-  // Rebuild only the name cloud on resize (organs are scale-independent). Keep
-  // the same Float32Array identity by mutating clouds[0] in place so the frame
-  // loop's `a === b` fast-path and morph stay valid.
+  // Rebuild the runtime clouds (name + envelope) on resize; organs are
+  // scale-independent. Keep the same Float32Array identity by mutating
+  // clouds[0] / clouds[LAST] in place so the frame loop's `a === b` fast-path
+  // and morph stay valid.
   useEffect(() => {
     if (status !== "ready" || !clouds) return;
     let raf = 0;
+    const last = clouds.length - 1;
     const rebuild = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         const count = clouds[0].length / 3;
-        const fresh = buildNameCloud(NAME_TEXT, count, NAME_WORLD_HEIGHT);
-        clouds[0].set(fresh);
+        clouds[0].set(buildNameCloud(NAME_TEXT, count, NAME_WORLD_HEIGHT));
+        clouds[last].set(buildEnvelopeCloud(count, ENVELOPE_WORLD_HEIGHT));
       });
     };
     window.addEventListener("resize", rebuild);
@@ -659,10 +689,11 @@ export default function Specimen() {
 
   // -------------------------------------------------------------------------
   // Click-vs-drag → open panel. We attach our OWN pointerdown/up listeners on
-  // the canvas container so OrbitControls can't swallow the pointerup (the v2
-  // bug). A click is short (<220ms), near-stationary (<7px), NOT an in-flight
-  // OrbitControls drag, NOT just-after a rotation, NOT over a UI overlay, and
-  // only opens for organ states (index 1..3 carry a section; intro is null).
+  // the canvas container so OrbitControls can't swallow the pointerup. A click
+  // is short (<220ms), near-stationary (<7px), NOT over a UI overlay, and only
+  // opens for ORGAN states (index 1..3 carry a section). The intro (index 0)
+  // and contact (index LAST) states open NO panel — intro shows the name +
+  // contact buttons, contact shows the form overlay (handled by ContactForm).
   // -------------------------------------------------------------------------
   useEffect(() => {
     if (status !== "ready") return;
@@ -686,17 +717,16 @@ export default function Specimen() {
       // stationary click), and fires 'end' at document level AFTER this bubble
       // listener — so scroll.rotating is true for 100% of pointerups and would
       // reject every click. A genuine drag still moves >=7px (rejected by
-      // `moved`); a held press is rejected by `held`. sinceRotate is likewise
-      // dropped: rotatedAtRef is stamped by the document-level 'end' that runs
-      // after onUp, so it only ever held the PREVIOUS gesture's timestamp.
+      // `moved`); a held press is rejected by `held`.
       if (held > 220 || moved >= 7) {
         return;
       }
       // reject clicks that land on an interactive UI overlay (rail, contact
-      // buttons, console, intro buttons) — those handle their own pointers.
+      // buttons, chart, intro, form) — those handle their own pointers.
       const target = e.target as HTMLElement | null;
       if (target && target.closest("[data-ui-overlay]")) return;
-      // intro (index 0) has no section → no panel
+      // Only ORGAN states open a panel. intro (index 0) and contact (LAST) have
+      // section === null → no panel; contact instead shows the form overlay.
       const st = STATES[Math.round(scroll.scrollPos)];
       if (!st.section) return;
       sceneActions.openPanel(st.section, { x: e.clientX, y: e.clientY });
@@ -722,8 +752,6 @@ export default function Specimen() {
   }, [scroll]);
   const onRotateEnd = useCallback(() => {
     // Clear the live-drag flag synchronously and stamp a monotonic time.
-    // onUp rejects clicks within ~250ms of this, immune to the event-ordering /
-    // pointer-capture gaps a 0ms timeout couldn't cover.
     scroll.rotating = false;
     rotatedAtRef.current = performance.now();
   }, [scroll]);
@@ -741,7 +769,7 @@ export default function Specimen() {
   return (
     <div
       className="fixed inset-0 overflow-hidden"
-      style={{ background: "#070808" }}
+      style={{ background: PAPER }}
     >
       {/* canvas wrapper: pointer/click-vs-drag detection lives here */}
       <div
@@ -761,7 +789,7 @@ export default function Specimen() {
             gl={{ antialias: true }}
             onCreated={measure}
           >
-            <color attach="background" args={["#070808"]} />
+            <color attach="background" args={[PAPER]} />
             <PointCloud
               sim={sim}
               clouds={clouds}
@@ -774,9 +802,9 @@ export default function Specimen() {
         )}
       </div>
 
-      {/* right rail: bars ONLY (4 ticks for the 4 states), no text labels.
-          z below intro/panel overlays; marked as a UI overlay so a tick click
-          never doubles as an organ click. */}
+      {/* right rail: 5 ink bars ONLY (one per state), no text labels. Active
+          bar reads darker + taller, via transform + opacity only. Marked as a
+          UI overlay so a tick click never doubles as an organ click. */}
       {status === "ready" && (
         <nav
           aria-label="specimen states"
@@ -792,8 +820,13 @@ export default function Specimen() {
                 onClick={() => goToState(i)}
                 aria-current={active ? "true" : undefined}
                 aria-label={st.label}
-                className="flex cursor-pointer items-center bg-transparent focus-visible:outline focus-visible:outline-offset-4 focus-visible:outline-[#e8e3d8]/60"
-                style={{ border: "none", padding: "4px 0", borderRadius: 0 }}
+                className="flex cursor-pointer items-center bg-transparent"
+                style={{
+                  border: "none",
+                  padding: "4px 0",
+                  borderRadius: 0,
+                  outlineColor: OXBLOOD,
+                }}
               >
                 <span
                   aria-hidden
@@ -802,13 +835,13 @@ export default function Specimen() {
                     display: "block",
                     width: 16,
                     height: 2,
-                    background: BONE,
+                    background: INK,
                     transformOrigin: "right center",
-                    // active: full; inactive: shorter + thinner + dim
+                    // active: full + darker; inactive: shorter, thinner, faded
                     transform: active
                       ? "scaleX(1) scaleY(1)"
                       : "scaleX(0.5) scaleY(0.5)",
-                    opacity: active ? 1 : 0.32,
+                    opacity: active ? 1 : 0.34,
                     transition: reducedMotion
                       ? "none"
                       : "transform 180ms ease, opacity 180ms ease",
@@ -820,7 +853,7 @@ export default function Specimen() {
         </nav>
       )}
 
-      {/* loading / error overlays */}
+      {/* loading / error overlays — atlas ink-on-cream */}
       {status === "loading" && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <p
@@ -829,7 +862,7 @@ export default function Specimen() {
                 'var(--font-mono), "IBM Plex Mono", ui-monospace, Menlo, monospace',
               fontSize: "0.78rem",
               letterSpacing: "0.06em",
-              color: "rgba(232, 227, 216, 0.55)",
+              color: "rgba(26, 23, 20, 0.6)",
             }}
           >
             loading specimen… {progress}%
@@ -845,7 +878,7 @@ export default function Specimen() {
                 'var(--font-mono), "IBM Plex Mono", ui-monospace, Menlo, monospace',
               fontSize: "0.78rem",
               letterSpacing: "0.06em",
-              color: "rgba(232, 227, 216, 0.55)",
+              color: "rgba(26, 23, 20, 0.6)",
             }}
           >
             specimen failed to load
@@ -854,7 +887,7 @@ export default function Specimen() {
             type="button"
             onClick={retry}
             data-ui-overlay
-            className="cursor-pointer focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-[#e8e3d8]/60"
+            className="cursor-pointer"
             style={{
               fontFamily:
                 'var(--font-mono), "IBM Plex Mono", ui-monospace, Menlo, monospace',
@@ -862,9 +895,10 @@ export default function Specimen() {
               letterSpacing: "0.08em",
               padding: "0.45rem 1.1rem",
               background: "transparent",
-              border: "1px solid rgba(232, 227, 216, 0.5)",
+              border: `1px solid ${OXBLOOD}`,
               borderRadius: 2,
-              color: BONE,
+              color: OXBLOOD,
+              outlineColor: OXBLOOD,
             }}
           >
             retry

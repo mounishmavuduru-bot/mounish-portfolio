@@ -18,26 +18,27 @@ import { useSyncExternalStore } from "react";
 import type { Site } from "@/data/content";
 
 // ---------------------------------------------------------------------------
-// States: intro(name) → heart → brain → liver
+// States: intro(name) → heart → brain → liver → contact
 // ---------------------------------------------------------------------------
 
-export type StateId = "intro" | "heart" | "brain" | "liver";
+export type StateId = "intro" | "heart" | "brain" | "liver" | "contact";
 
 export interface StateDef {
   id: StateId;
-  /** Content section this state opens in the panel; intro has none. */
+  /** Content section this state opens in the panel; intro/contact have none. */
   section: Site | null;
   label: string;
-  /** Path to the baked .bin cloud; intro builds its cloud at runtime. */
+  /** Path to the baked .bin cloud; intro/contact build their cloud at runtime. */
   organFile: string | null;
 }
 
-/** Canonical ordered list of the four particle states. */
+/** Canonical ordered list of the five particle states. */
 export const STATES: StateDef[] = [
   { id: "intro", section: null, label: "Mounish Mavuduru", organFile: null },
   { id: "heart", section: "projects", label: "Heart", organFile: "/organs/heart.bin" },
   { id: "brain", section: "achievements", label: "Brain", organFile: "/organs/brain.bin" },
   { id: "liver", section: "positions", label: "Liver", organFile: "/organs/liver.bin" },
+  { id: "contact", section: null, label: "Contact", organFile: null },
 ];
 
 // ---------------------------------------------------------------------------
@@ -230,3 +231,49 @@ export const pointer: {
   overEkg: false,
   t: 0,
 };
+
+// ---------------------------------------------------------------------------
+// Non-reactive EKG effect channel
+// ---------------------------------------------------------------------------
+
+/**
+ * Discrete EKG events fired by the chart / orders easter eggs and consumed by
+ * EkgMonitor to drive its rhythm strip. This channel is deliberately separate
+ * from the reactive snapshot above: emitting an event must NEVER schedule a
+ * React render — it is a fire-and-forget pub/sub read inside EkgMonitor's rAF
+ * world. Mutating snapshot state (and thus re-rendering the tree) just to nudge
+ * a canvas animation would be wasteful and could fight the morph loop.
+ *
+ *  ectopic  — a single strong extra beat
+ *  flatline — asystole; the trace goes flat (caller revives it)
+ *  defib    — one sharp jolt deflection
+ *  tachy    — elevated rate for a few seconds
+ *  normal   — return to baseline sinus rhythm
+ */
+export type EkgEvent = "ectopic" | "flatline" | "defib" | "tachy" | "normal";
+
+const ekgListeners = new Set<(e: EkgEvent) => void>();
+
+/** Fire an EKG event to all current subscribers. Fire-and-forget; never throws. */
+export function emitEkg(e: EkgEvent): void {
+  // Snapshot the listener set so a listener that (un)subscribes during dispatch
+  // can't mutate the set we're iterating.
+  for (const cb of Array.from(ekgListeners)) {
+    try {
+      cb(e);
+    } catch {
+      // A misbehaving listener must not break the dispatch loop.
+    }
+  }
+}
+
+/**
+ * Subscribe to EKG events. Returns an unsubscribe function. EkgMonitor calls
+ * this in an effect and disposes on unmount.
+ */
+export function subscribeEkg(cb: (e: EkgEvent) => void): () => void {
+  ekgListeners.add(cb);
+  return () => {
+    ekgListeners.delete(cb);
+  };
+}

@@ -1,49 +1,71 @@
 @import "tailwindcss";
 
+/* ===========================================================================
+   ANATOMICAL ATLAS — light theme. 1800s Gray's-Anatomy engraving plate:
+   warm cream paper ground, dark ink stipple, a single oxblood accent, muted
+   sepia meta, hairline rules. No neon, no green/cyan, no dark ground, no glass.
+   next/font sets --font-display (Spectral, old-style serif) and --font-mono
+   (IBM Plex Mono) on <html>; both are consumed below.
+   =========================================================================== */
+
 :root {
-  --black: #070808;
-  --bone: #e8e3d8;
-  --blood: #a61b1b;
-  --green: #36c97c;
-  /* next/font sets --font-display (Bricolage Grotesque) and --font-mono
-     (IBM Plex Mono) on <html>. Both are consumed directly below. */
+  --paper: #efe7d6; /* page background, warm cream */
+  --paper-2: #e6dcc6; /* slightly deeper panels */
+  --ink: #1a1714; /* primary text + particle dots */
+  --ink-soft: #5b5249; /* secondary text */
+  --oxblood: #7c1f1c; /* the single accent */
+  --sepia: #8a7a5c; /* muted meta / hairline-ish */
+  --line: rgba(26, 23, 20, 0.16); /* hairlines */
 }
 
 @theme inline {
-  --color-background: var(--black);
-  --color-foreground: var(--bone);
-  --color-bone: var(--bone);
-  --color-blood: var(--blood);
-  --color-trace: var(--green);
-  --font-display: var(--font-display), sans-serif;
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-oxblood: var(--oxblood);
+  --color-sepia: var(--sepia);
+  --font-display: var(--font-display), Spectral, Georgia, serif;
+  --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 html,
 body {
-  background: var(--black);
-  color: var(--bone);
-  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--paper);
+  color: var(--ink);
+  /* Body text is the old-style serif; tiny labels/meta opt into mono. */
+  font-family: var(--font-display), Spectral, Georgia, serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
+/* Explicit serif display helper (headings, the 3D name DOM mirror, etc.). */
 .font-display {
-  font-family: var(--font-display), sans-serif;
+  font-family: var(--font-display), Spectral, Georgia, serif;
+}
+
+/* Tiny labels and meta use IBM Plex Mono. */
+.font-mono {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 ::selection {
-  background: var(--bone);
-  color: var(--black);
+  background: var(--ink);
+  color: var(--paper);
 }
 
+/* Atlas focus ring: a thin oxblood outline (never green). */
 *:focus-visible {
-  outline: 1px solid var(--green);
+  outline: 1px solid var(--oxblood);
   outline-offset: 2px;
 }
 
-/* Thin scrollbars: transparent track, dim bone thumb */
+/* Thin ink scrollbars on the cream ground. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--bone) 20%, transparent) transparent;
+  scrollbar-color: color-mix(in srgb, var(--ink) 22%, transparent) transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
@@ -53,5 +75,8 @@ body {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--bone) 20%, transparent);
+  background: color-mix(in srgb, var(--ink) 22%, transparent);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ink) 34%, transparent);
 }

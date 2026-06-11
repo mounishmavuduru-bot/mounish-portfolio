@@ -13,11 +13,11 @@ import {
 import { useScene, sceneActions } from "@/lib/sceneStore";
 
 const MARGIN = 14; // viewport edge gap
-const BG = "#0a0c0c";
-const HAIRLINE = "rgba(232, 227, 216, 0.12)";
+const BG = "var(--paper-2)";
+const HAIRLINE = "var(--line)";
 const MONO =
   'var(--font-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace';
-const DISPLAY = "var(--font-display), sans-serif";
+const DISPLAY = "var(--font-display), Spectral, Georgia, serif";
 
 type Row = { primary: string; meta: string };
 
@@ -37,9 +37,11 @@ function rowsFor(section: Site): Row[] {
  * slice from the scene store and renders nothing while closed. Escape,
  * outside-click, and the close button all call sceneActions.closePanel().
  *
- * Solid (#0a0c0c — never glass), sharp corners, 1px hairline border. Opens via
- * scaleY 0→1 from the top edge while the contents fade in (transform/opacity
- * only); max-height is capped with internal vertical scroll.
+ * Atlas styling: a solid cream-paper card (--paper-2, never glass), sharp 2px
+ * corners, 1px ink hairline border, Spectral names, mono meta, oxblood on
+ * hover. No "specimen —" label. Opens via scaleY 0→1 from the top edge while
+ * the contents fade in (transform/opacity only); max-height capped with
+ * internal vertical scroll.
  */
 export default function SectionPanel(): JSX.Element | null {
   const panel = useScene((s) => s.panel);
@@ -89,8 +91,7 @@ function PanelBody({
     let left = anchor.x - 18;
     left = Math.max(MARGIN, Math.min(left, vw - w - MARGIN));
 
-    // Vertical: top AT the anchor. If that leaves too little room below, lift
-    // it just enough that the (capped) panel stays on-screen.
+    // Vertical: top AT the anchor, clamped so the (capped) panel stays on-screen.
     const top = Math.max(MARGIN, anchor.y);
 
     setPos({ left, top });
@@ -151,87 +152,60 @@ function PanelBody({
         style={{
           left: pos ? pos.left : anchor.x,
           top: pos ? pos.top : anchor.y,
-          width: "clamp(240px, 22vw, 320px)",
+          width: "clamp(244px, 23vw, 328px)",
           maxHeight: "min(70vh, calc(100vh - 28px))",
           background: BG,
           border: `1px solid ${HAIRLINE}`,
-          borderRadius: 0,
+          borderRadius: "2px",
           // hidden until clamp+open animation places it (avoids a flash)
           opacity: pos ? undefined : 0,
           willChange: "transform, opacity",
         }}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <div
-          ref={bodyRef}
-          className="flex min-h-0 flex-col overflow-y-auto"
-        >
-          {/* header */}
+        <div ref={bodyRef} className="flex min-h-0 flex-col overflow-y-auto">
+          {/* header — no "specimen —" label, just the section title + close */}
           <div
-            className="flex items-start justify-between gap-3"
+            className="flex items-center justify-between gap-3"
             style={{
               position: "sticky",
               top: 0,
               background: BG,
-              padding: "14px 14px 12px",
+              padding: "13px 14px 11px",
               borderBottom: `1px solid ${HAIRLINE}`,
               zIndex: 1,
             }}
           >
-            <div className="flex flex-col gap-1.5">
-              <span
-                style={{
-                  fontFamily: MONO,
-                  fontSize: "0.56rem",
-                  letterSpacing: "0.22em",
-                  textTransform: "uppercase",
-                  color: "color-mix(in srgb, var(--green) 70%, transparent)",
-                }}
-              >
-                specimen — {section}
-              </span>
-              <h2
-                style={{
-                  fontFamily: DISPLAY,
-                  fontWeight: 800,
-                  fontSize: "1.35rem",
-                  lineHeight: 1.05,
-                  color: "var(--bone)",
-                  margin: 0,
-                }}
-              >
-                {title}
-              </h2>
-            </div>
+            <h2
+              style={{
+                fontFamily: DISPLAY,
+                fontWeight: 600,
+                fontSize: "1.32rem",
+                lineHeight: 1.05,
+                color: "var(--ink)",
+                margin: 0,
+              }}
+            >
+              {title}
+            </h2>
 
             <button
               type="button"
               onClick={() => sceneActions.closePanel()}
+              className="panel-close font-mono"
               style={{
                 fontFamily: MONO,
                 fontSize: "0.6rem",
                 letterSpacing: "0.06em",
                 textTransform: "lowercase",
-                color: "color-mix(in srgb, var(--bone) 70%, transparent)",
-                border:
-                  "1px solid color-mix(in srgb, var(--bone) 25%, transparent)",
+                color: "var(--ink-soft)",
+                border: "1px solid var(--line)",
                 borderRadius: "2px",
                 padding: "4px 8px",
                 background: "transparent",
                 cursor: "pointer",
                 whiteSpace: "nowrap",
                 transition: "color 150ms linear, border-color 150ms linear",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = "var(--green)";
-                e.currentTarget.style.borderColor =
-                  "color-mix(in srgb, var(--green) 55%, transparent)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color =
-                  "color-mix(in srgb, var(--bone) 70%, transparent)";
-                e.currentTarget.style.borderColor =
-                  "color-mix(in srgb, var(--bone) 25%, transparent)";
               }}
             >
               close
@@ -253,10 +227,10 @@ function PanelBody({
                   className="row-primary"
                   style={{
                     fontFamily: DISPLAY,
-                    fontWeight: 800,
-                    fontSize: "1rem",
-                    lineHeight: 1.2,
-                    color: "var(--bone)",
+                    fontWeight: 500,
+                    fontSize: "1.02rem",
+                    lineHeight: 1.22,
+                    color: "var(--ink)",
                     transition: "color 150ms linear",
                   }}
                 >
@@ -264,11 +238,12 @@ function PanelBody({
                 </span>
                 {row.meta ? (
                   <span
+                    className="font-mono"
                     style={{
                       fontFamily: MONO,
                       fontSize: "0.6rem",
                       letterSpacing: "0.06em",
-                      color: "color-mix(in srgb, var(--bone) 45%, transparent)",
+                      color: "var(--sepia)",
                     }}
                   >
                     {row.meta}
@@ -280,9 +255,14 @@ function PanelBody({
         </div>
       </div>
 
-      {/* row hover: primary text -> green, color only (no lift/scale/shadow) */}
+      {/* hover: row primary + close shift to oxblood, color only (no lift) */}
       <style>{`
-        .row:hover .row-primary { color: var(--green); }
+        .row:hover .row-primary { color: var(--oxblood); }
+        .panel-close:hover,
+        .panel-close:focus-visible {
+          color: var(--oxblood);
+          border-color: color-mix(in srgb, var(--oxblood) 55%, transparent);
+        }
       `}</style>
     </div>
   );

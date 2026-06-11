@@ -1,20 +1,17 @@
 "use client";
 
 import type { JSX } from "react";
+import { useEffect, useRef } from "react";
 import { GITHUB, LINKEDIN, EMAIL } from "@/data/content";
 
-const MONO =
-  'var(--font-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace';
-const HAIRLINE = "color-mix(in srgb, var(--bone) 22%, transparent)";
-
 /**
- * Three deliberately non-generic contact buttons. Each is a real <a> with a
- * sharp body (1px on small controls), a 1px hairline border, a tiny uppercase
- * mono micro-label ("gh" / "in" / "@") set off by a hairline divider, the
- * handle, and a hand-drawn 1px EKG-tick mark. Hover shifts border + text to
- * --green over 150ms (color/opacity only — no lift, scale, or shadow).
- *
- * No emoji, no rounded icon tiles, no glassmorphism.
+ * Three contact links rendered as engraving-style DOTTED GLYPHS — no text
+ * labels, no EKG squiggle. Each glyph (GH / IN / @) is stipple-drawn on a tiny
+ * canvas from a coarse dot grid so it matches the particle motif of the atlas:
+ * dark ink dots on cream paper. Each mark is a real <a> (GitHub / LinkedIn /
+ * mailto) with a sharp body, a hairline border, and a hover/focus that shifts
+ * both the border and the stipple ink to --oxblood (color only — no lift,
+ * scale, glow, or shadow).
  */
 
 type Mark = "github" | "linkedin" | "mail";
@@ -22,83 +19,157 @@ type Mark = "github" | "linkedin" | "mail";
 interface Item {
   href: string;
   external: boolean;
-  /** tiny uppercase mono tag in the leading cell */
-  tag: string;
-  /** the readable handle */
-  handle: string;
-  /** screen-reader label */
   aria: string;
   mark: Mark;
 }
 
-function handleFromUrl(url: string): string {
-  // strip protocol + www + trailing slash, keep the meaningful path
-  return url
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .replace(/\/$/, "");
-}
-
 const ITEMS: Item[] = [
-  {
-    href: GITHUB,
-    external: true,
-    tag: "gh",
-    handle: handleFromUrl(GITHUB).replace(/^github\.com\//, ""),
-    aria: "GitHub profile",
-    mark: "github",
-  },
-  {
-    href: LINKEDIN,
-    external: true,
-    tag: "in",
-    handle: handleFromUrl(LINKEDIN).replace(/^.*\/in\//, ""),
-    aria: "LinkedIn profile",
-    mark: "linkedin",
-  },
-  {
-    href: `mailto:${EMAIL}`,
-    external: false,
-    tag: "@",
-    handle: EMAIL,
-    aria: "Email Mounish",
-    mark: "mail",
-  },
+  { href: GITHUB, external: true, aria: "GitHub profile", mark: "github" },
+  { href: LINKEDIN, external: true, aria: "LinkedIn profile", mark: "linkedin" },
+  { href: `mailto:${EMAIL}`, external: false, aria: "Email Mounish", mark: "mail" },
 ];
 
-/** A 1px EKG-style tick drawn in code — the recurring spec motif, not an icon. */
-function TickMark({ mark }: { mark: Mark }): JSX.Element {
-  // Each destination gets a faintly different deflection so the three marks
-  // read as siblings without being identical.
-  const d =
-    mark === "github"
-      ? "M0 6 H4 L5 6 L7 2 L9 10 L11 6 H16"
-      : mark === "linkedin"
-        ? "M0 6 H5 L6 3 L8 9 L10 6 H16"
-        : "M0 6 H3 L4 6 L6 1 L8 11 L10 6 L11 6 H16";
+// ---------------------------------------------------------------------------
+// Glyph masks — each is a coarse pixel grid. Non-blank cells become stipple
+// dots. Hand-laid so "GH" / "IN" / "@" read clearly at small size.
+// Grid is 11 wide; rows vary. 1 = inked cell.
+// ---------------------------------------------------------------------------
+
+type Mask = number[][];
+
+// "GH" — G then H, two compact letterforms side by side.
+const MASK_GH: Mask = [
+  [0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0],
+  [1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0],
+  [1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0],
+  [1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0],
+  [1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0],
+  [1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0],
+  [0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0],
+];
+
+// "IN" — I then N.
+const MASK_IN: Mask = [
+  [1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0],
+  [0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0],
+  [0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 0],
+  [0, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0],
+  [0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0],
+  [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+  [1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0],
+];
+
+// "@" — at-sign for email.
+const MASK_AT: Mask = [
+  [0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+  [0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+  [1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0],
+  [1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0],
+  [1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0],
+  [1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0],
+  [0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+];
+
+const MASKS: Record<Mark, Mask> = {
+  github: MASK_GH,
+  linkedin: MASK_IN,
+  mail: MASK_AT,
+};
+
+const GLYPH_PX = 38; // css px square the stipple is drawn into
+
+/**
+ * Draws the mask as soft round ink dots. `ink` is a CSS color string. A subtle
+ * per-cell radius/alpha jitter (seeded by cell index, deterministic) gives the
+ * marks a hand-stippled, engraved feel rather than a printed bitmap.
+ */
+function drawStipple(canvas: HTMLCanvasElement, mask: Mask, ink: string): void {
+  const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+  const size = GLYPH_PX;
+  canvas.width = Math.round(size * dpr);
+  canvas.height = Math.round(size * dpr);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = ink;
+
+  const cols = mask[0].length;
+  const rows = mask.length;
+  // Fit the grid with a little inset margin; keep the glyph centered.
+  const margin = size * 0.16;
+  const usableW = size - margin * 2;
+  const usableH = size - margin * 2;
+  const cell = Math.min(usableW / cols, usableH / rows);
+  const gridW = cell * cols;
+  const gridH = cell * rows;
+  const ox = (size - gridW) / 2;
+  const oy = (size - gridH) / 2;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (!mask[r][c]) continue;
+      // deterministic jitter so dots look hand-laid but stable across redraws
+      const seed = (r * 31 + c * 17) % 97;
+      const jr = ((seed % 7) / 7 - 0.5) * cell * 0.18;
+      const jc = (((seed * 3) % 7) / 7 - 0.5) * cell * 0.18;
+      const cx = ox + (c + 0.5) * cell + jc;
+      const cy = oy + (r + 0.5) * cell + jr;
+      const radius = cell * (0.3 + ((seed % 5) / 5) * 0.08);
+      ctx.globalAlpha = 0.82 + ((seed % 4) / 4) * 0.18;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function StippleGlyph({ mark }: { mark: Mark }): JSX.Element {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const root = canvas.closest("a"); // the link that owns the color tokens
+    const readInk = (): string => {
+      if (!root) return "#1a1714";
+      const hovered =
+        root.matches(":hover") || root.matches(":focus-visible");
+      const styles = getComputedStyle(root);
+      const ox = styles.getPropertyValue("--ox").trim() || "#7c1f1c";
+      const ink = styles.getPropertyValue("--inkc").trim() || "#1a1714";
+      return hovered ? ox : ink;
+    };
+
+    let raf = 0;
+    let lastInk = "";
+    const tick = () => {
+      const ink = readInk();
+      if (ink !== lastInk) {
+        lastInk = ink;
+        drawStipple(canvas, MASKS[mark], ink);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    // initial draw, then a cheap rAF that only repaints on a color change
+    drawStipple(canvas, MASKS[mark], readInk());
+    lastInk = readInk();
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [mark]);
+
   return (
-    <svg
-      width="16"
-      height="12"
-      viewBox="0 0 16 12"
+    <canvas
+      ref={canvasRef}
       aria-hidden="true"
       style={{
         display: "block",
-        overflow: "visible",
-        color: "inherit",
+        width: GLYPH_PX,
+        height: GLYPH_PX,
+        imageRendering: "auto",
       }}
-    >
-      <path
-        d={d}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1"
-        strokeLinejoin="miter"
-        strokeLinecap="butt"
-        vectorEffect="non-scaling-stroke"
-        opacity={0.85}
-      />
-    </svg>
+    />
   );
 }
 
@@ -111,78 +182,38 @@ export default function ContactButtons(): JSX.Element {
     >
       {ITEMS.map((it) => (
         <a
-          key={it.tag}
+          key={it.mark}
           href={it.href}
           aria-label={it.aria}
           {...(it.external
             ? { target: "_blank", rel: "noopener noreferrer" }
             : {})}
-          className="contact-btn group inline-flex items-stretch"
-          style={{
-            fontFamily: MONO,
-            color: "color-mix(in srgb, var(--bone) 78%, transparent)",
-            border: `1px solid ${HAIRLINE}`,
-            borderRadius: "2px",
-            background: "color-mix(in srgb, var(--black) 55%, transparent)",
-            textDecoration: "none",
-            transition:
-              "color 150ms linear, border-color 150ms linear, background-color 150ms linear",
-          }}
+          className="contact-btn inline-flex items-center justify-center"
+          style={
+            {
+              // local color tokens the canvas reads via getComputedStyle
+              ["--inkc" as string]: "#1a1714",
+              ["--ox" as string]: "#7c1f1c",
+              border: "1px solid var(--line)",
+              borderRadius: "2px",
+              background: "color-mix(in srgb, var(--paper-2) 70%, transparent)",
+              padding: "6px",
+              textDecoration: "none",
+              transition: "border-color 180ms linear, background-color 180ms linear",
+            } as React.CSSProperties
+          }
         >
-          {/* leading cell: tiny uppercase tag, hairline-divided */}
-          <span
-            className="contact-tag"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              padding: "0 9px",
-              fontSize: "0.6rem",
-              letterSpacing: "0.16em",
-              textTransform: "uppercase",
-              borderRight: `1px solid ${HAIRLINE}`,
-              transition: "border-color 150ms linear",
-            }}
-          >
-            {it.tag}
-          </span>
-
-          {/* trailing cell: 1px tick mark + handle */}
-          <span
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              padding: "7px 11px 7px 10px",
-              minHeight: "30px",
-            }}
-          >
-            <TickMark mark={it.mark} />
-            <span
-              style={{
-                fontSize: "0.66rem",
-                letterSpacing: "0.02em",
-                maxWidth: "16ch",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {it.handle}
-            </span>
-          </span>
+          <StippleGlyph mark={it.mark} />
         </a>
       ))}
 
-      {/* hover: border + text shift to --green; color/opacity only. */}
+      {/* hover/focus: border shifts to oxblood (the glyph ink shift is handled
+          in the canvas by reading :hover state — color only, no transform). */}
       <style>{`
         .contact-btn:hover,
         .contact-btn:focus-visible {
-          color: var(--green);
-          border-color: color-mix(in srgb, var(--green) 55%, transparent);
-        }
-        .contact-btn:hover .contact-tag,
-        .contact-btn:focus-visible .contact-tag {
-          border-color: color-mix(in srgb, var(--green) 40%, transparent);
+          border-color: color-mix(in srgb, var(--oxblood) 60%, transparent);
+          background: color-mix(in srgb, var(--paper-2) 90%, transparent);
         }
         @media (max-width: 520px) {
           .contact-buttons { flex-wrap: wrap; justify-content: center; }

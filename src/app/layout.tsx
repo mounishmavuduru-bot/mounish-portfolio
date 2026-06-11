@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, IBM_Plex_Mono } from "next/font/google";
+import { Spectral, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
-// Display face: variable font (wght 200–800) so 800 is available for bold
-// 3D-letter headings without shipping a separate static weight.
-const bricolage = Bricolage_Grotesque({
+// Display + body face: Spectral, an old-style serif in the spirit of an 1800s
+// anatomy plate. Spectral ships as static weights, so we request the range the
+// atlas uses (300–600) plus italics for emphasis.
+const spectral = Spectral({
   variable: "--font-display",
   subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
+  style: ["normal", "italic"],
   display: "swap",
 });
 
+// Tiny labels / meta / chart readouts.
 const plexMono = IBM_Plex_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
@@ -45,9 +49,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${plexMono.variable} ${bricolage.variable} h-full`}
+      className={`${plexMono.variable} ${spectral.variable} h-full`}
     >
-      <body className="min-h-full bg-[#070808] text-[#e8e3d8] antialiased">
+      <body className="min-h-full bg-[#efe7d6] text-[#1a1714] antialiased">
         {children}
       </body>
     </html>
