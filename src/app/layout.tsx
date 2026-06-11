@@ -1,29 +1,35 @@
 import type { Metadata } from "next";
-import { DM_Mono, Cormorant_Garamond } from "next/font/google";
+import { Fraunces, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
-const dmMono = DM_Mono({
-  variable: "--font-mono",
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
-  weight: ["300", "400", "500"],
 });
 
-const cormorant = Cormorant_Garamond({
-  variable: "--font-display",
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
-  style: ["normal", "italic"],
+  weight: ["400", "500"],
 });
+
+const DESCRIPTION =
+  "Builder, researcher, and aspiring cardiothoracic surgeon. Projects, research, and positions.";
 
 export const metadata: Metadata = {
-  title: "Mounish Mavuduru — OR",
-  description:
-    "Builder, researcher, and aspiring cardiothoracic surgeon.",
+  title: "Mounish Mavuduru",
+  description: DESCRIPTION,
   openGraph: {
     title: "Mounish Mavuduru",
-    description:
-      "Builder, researcher, and aspiring cardiothoracic surgeon.",
+    description: DESCRIPTION,
+    url: "https://mounishmavuduru.vercel.app",
+    siteName: "Mounish Mavuduru",
     type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "Mounish Mavuduru",
+    description: DESCRIPTION,
   },
 };
 
@@ -35,9 +41,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${dmMono.variable} ${cormorant.variable} h-full antialiased`}
+      className={`${plexMono.variable} ${fraunces.variable} h-full`}
     >
-      <body className="min-h-full overflow-hidden bg-[#07090a] text-[#e8edec]">
+      <body className="min-h-full bg-[#070808] text-[#e8e3d8] antialiased">
         {children}
       </body>
     </html>

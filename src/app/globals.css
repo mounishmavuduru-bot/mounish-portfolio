@@ -1,254 +1,60 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #07090a;
-  --bg-2: #0c1011;
-  --tissue: #5a1417;
-  --tissue-hi: #8a1e22;
-  --bone: #f3efe6;
-  --steel: #b8c4c4;
-  --od-blue: #6fb8c0;
-  --od-blue-hot: #9ee6ee;
-  --od-green: #7fd9b8;
-  --warning: #ffb37a;
+  --black: #070808;
+  --bone: #e8e3d8;
+  --blood: #a61b1b;
+  --green: #36c97c;
+  /* next/font variables live on <html>; alias them here so components
+     can use var(--font-mono) / var(--font-display) directly. */
+  --font-mono: var(--font-plex);
+  --font-display: var(--font-fraunces);
 }
 
 @theme inline {
-  --color-background: var(--bg);
+  --color-background: var(--black);
   --color-foreground: var(--bone);
-  --color-steel: var(--steel);
-  --color-od: var(--od-blue);
-  --font-mono: var(--font-mono);
-  --font-display: var(--font-display);
+  --color-bone: var(--bone);
+  --color-blood: var(--blood);
+  --color-trace: var(--green);
+  --font-mono: var(--font-plex);
+  --font-display: var(--font-fraunces);
 }
 
 html,
 body {
-  background: var(--bg);
+  background: var(--black);
   color: var(--bone);
-  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-plex), ui-monospace, SFMono-Regular, Menlo, monospace;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Hide native cursor on desktop only — scalpel takes over */
-@media (hover: hover) and (pointer: fine) {
-  html,
-  body,
-  a,
-  button {
-    cursor: none !important;
-  }
-}
-
-/* Surgical scan line + vignette overlay */
-.or-vignette::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 70% 55% at 50% 38%, transparent 0%, transparent 45%, rgba(0, 0, 0, 0.7) 100%),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, 0.012) 0px,
-      rgba(255, 255, 255, 0.012) 1px,
-      transparent 1px,
-      transparent 3px
-    );
-  mix-blend-mode: screen;
-  z-index: 40;
-}
-
-/* Surgical light flicker on intro->main transition */
-@keyframes lightFlicker {
-  0% { opacity: 0; }
-  8% { opacity: 0.85; }
-  12% { opacity: 0.2; }
-  16% { opacity: 0.9; }
-  22% { opacity: 0.3; }
-  28% { opacity: 1; }
-  100% { opacity: 0; }
-}
-.light-flicker {
-  animation: lightFlicker 1100ms ease-out forwards;
-  background: radial-gradient(ellipse 60% 50% at 50% 42%, rgba(255, 250, 230, 0.95), rgba(180, 220, 230, 0.4) 35%, transparent 70%);
-}
-
-/* Marker pulse */
-@keyframes markerPulse {
-  0%, 100% { transform: scale(1); opacity: 0.85; }
-  50% { transform: scale(1.25); opacity: 0.4; }
-}
-.marker-pulse {
-  animation: markerPulse 1800ms ease-in-out infinite;
-}
-
-@keyframes markerPulseFast {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.5); opacity: 0.55; }
-}
-.marker-pulse-fast {
-  animation: markerPulseFast 700ms ease-in-out infinite;
-}
-
-@keyframes blink {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
-}
-.caret {
-  display: inline-block;
-  width: 0.55ch;
-  background: currentColor;
-  margin-left: 2px;
-  animation: blink 900ms steps(1) infinite;
-}
-
-.font-display { font-family: var(--font-display), serif; }
-.font-mono-soft { font-family: var(--font-mono), monospace; letter-spacing: 0.04em; }
-
-.btn-drape {
-  font-family: var(--font-mono), monospace;
-  letter-spacing: 0.32em;
-  font-size: 0.78rem;
-  padding: 14px 30px;
-  border: 1px solid color-mix(in oklab, var(--od-blue) 55%, transparent);
-  background: linear-gradient(180deg, color-mix(in oklab, var(--od-blue) 12%, transparent), transparent);
-  color: var(--od-blue-hot);
-  text-transform: uppercase;
-  position: relative;
-  transition: all 240ms ease;
-  cursor: none;
-}
-.btn-drape::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at center, color-mix(in oklab, var(--od-blue) 30%, transparent), transparent 70%);
-  opacity: 0;
-  transition: opacity 240ms ease;
-}
-.btn-drape:hover {
-  border-color: var(--od-blue-hot);
-  color: white;
-  box-shadow: 0 0 30px color-mix(in oklab, var(--od-blue) 30%, transparent);
-}
-.btn-drape:hover::before { opacity: 1; }
-
-.hud-text {
-  font-family: var(--font-mono), monospace;
-  font-size: 0.7rem;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  color: color-mix(in oklab, var(--od-blue) 75%, white);
+.font-display {
+  font-family: var(--font-fraunces), serif;
 }
 
 ::selection {
-  background: var(--od-blue);
-  color: var(--bg);
+  background: var(--bone);
+  color: var(--black);
 }
 
-/* ============ Dark liquid glass — global text block treatment ============ */
-.liquid-glass {
-  background: linear-gradient(
-    135deg,
-    rgba(8, 14, 18, 0.55) 0%,
-    rgba(4, 8, 10, 0.72) 100%
-  );
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow:
-    0 10px 32px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.09),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.4);
-  border-radius: 10px;
+*:focus-visible {
+  outline: 1px solid var(--green);
+  outline-offset: 2px;
 }
 
-.liquid-glass-sm {
-  padding: 10px 14px;
+/* Thin scrollbars: transparent track, dim bone thumb */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--bone) 20%, transparent) transparent;
 }
-.liquid-glass-md {
-  padding: 14px 18px;
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
-
-/* Animated ripple ring for site markers */
-@keyframes markerRipple {
-  0% {
-    transform: scale(1);
-    opacity: 0.85;
-  }
-  100% {
-    transform: scale(2.6);
-    opacity: 0;
-  }
+*::-webkit-scrollbar-track {
+  background: transparent;
 }
-.ripple-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  border: 1px solid #9ee6ee;
-  animation: markerRipple 2200ms cubic-bezier(0.16, 0.84, 0.32, 1) infinite;
-  pointer-events: none;
-}
-.ripple-ring.d1 {
-  animation-delay: 0ms;
-}
-.ripple-ring.d2 {
-  animation-delay: 720ms;
-}
-.ripple-ring.d3 {
-  animation-delay: 1440ms;
-}
-
-/* Slow drift of grain layer for animated subtle noise */
-@keyframes grainDrift {
-  0% {
-    transform: translate3d(0, 0, 0);
-  }
-  50% {
-    transform: translate3d(-22px, 16px, 0);
-  }
-  100% {
-    transform: translate3d(0, 0, 0);
-  }
-}
-.grain-drift {
-  animation: grainDrift 11s ease-in-out infinite;
-}
-
-/* Operative Field cards — fade + lift in stagger */
-@keyframes ofCardIn {
-  from {
-    opacity: 0;
-    transform: translateY(14px) translateZ(0px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) translateZ(20px);
-  }
-}
-.of-card {
-  position: relative;
-  padding: 14px 18px;
-  border: 1px solid rgba(255, 200, 200, 0.18);
-  background: linear-gradient(180deg, rgba(255, 240, 230, 0.06), rgba(60, 10, 12, 0.45));
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border-radius: 2px;
-  box-shadow:
-    0 6px 18px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 220, 200, 0.12);
-  opacity: 0;
-  transform: translateY(14px);
-  animation: ofCardIn 600ms cubic-bezier(.16,.84,.32,1) forwards;
-}
-.of-card::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  background: linear-gradient(180deg, transparent, #ff9a9a, transparent);
-  opacity: 0.6;
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--bone) 20%, transparent);
 }
