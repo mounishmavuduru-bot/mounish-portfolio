@@ -22,13 +22,15 @@ const BAR_H = 54;
  *    Mavuduru". The layer is pointer-events:none so it never eats the canvas
  *    drag; only the contact links re-enable pointer events.
  *
- *  • Once scrolled away (index > 0): the block collapses to the "M M" monogram
- *    that lives at the LEFT of the EKG header bar. Hover/focus expands the first
- *    M rightward into "Mounish" and the second into "Mavuduru" (the remaining
- *    letters are revealed via a clip-width grow + slide — transform/clip only),
- *    and a tidy clamped card drops below with the tagline + contact glyphs.
- *
- * Cross-fade between the two layouts is opacity + a tiny translate only.
+ *  • Once scrolled away (index > 0): the block collapses to ONLY the "M M"
+ *    monogram at the LEFT of the EKG header bar — no always-visible name text.
+ *    Hover/focus expands the initials IN PLACE on the bar: the first M grows
+ *    rightward into "Mounish" and the second into "Mavuduru" (clip-width +
+ *    slide, ~220ms — transform/clip/opacity only), reading as one Spectral
+ *    line. The tagline appears as a single smaller line directly under the
+ *    bar, with the three dotted contact glyphs inline after it (compact,
+ *    borderless). No floating card, no duplicate name. Collapses cleanly on
+ *    mouseleave/blur.
  */
 export default function IntroBlock(): JSX.Element {
   const index = useScene((s) => s.index);
@@ -116,14 +118,16 @@ export default function IntroBlock(): JSX.Element {
             if (!next || !e.currentTarget.contains(next)) setExpanded(false);
           }}
         >
-          {/* The monogram button: two initials that expand into the full names.
-              Each name is rendered as [M][rest], with `rest` clipped to width 0
-              when collapsed and to its natural width when expanded. */}
+          {/* The monogram button: two initials that expand in place into the
+              full name. Each name is rendered as [M][rest], with `rest`
+              clipped to width 0 when collapsed and revealed when expanded.
+              No backing, no card — the letters sit straight on the page,
+              layered with the rhythm trace. */}
           <button
             type="button"
             aria-label={`Mounish Mavuduru — ${
-              expanded ? "hide" : "show"
-            } details`}
+              expanded ? "collapse" : "expand"
+            } name`}
             aria-expanded={expanded}
             onClick={() => setExpanded((v) => !v)}
             className="mono-btn"
@@ -136,10 +140,10 @@ export default function IntroBlock(): JSX.Element {
               fontSize: "1.18rem",
               lineHeight: 1,
               letterSpacing: "0.01em",
-              color: expanded ? "var(--oxblood)" : "var(--ink)",
+              color: "var(--ink)",
               background: "transparent",
               border: "none",
-              padding: "6px 4px",
+              padding: "6px 6px 6px 4px",
               cursor: "pointer",
               whiteSpace: "nowrap",
               transition: "color 180ms linear",
@@ -148,63 +152,11 @@ export default function IntroBlock(): JSX.Element {
             <NamePart initial="M" rest="ounish" expanded={expanded} />
             <NamePart initial="M" rest="avuduru" expanded={expanded} />
           </button>
-
-          {/* Drop card: tagline + contact glyphs in a clean clamped stack.
-              Anchored to the bar's bottom-left, opacity+transform only. */}
-          <div
-            role="group"
-            aria-label="Identity"
-            style={{
-              position: "absolute",
-              top: BAR_H,
-              left: 12,
-              width: "min(340px, calc(100vw - 28px))",
-              background: "var(--paper-2)",
-              border: "1px solid var(--line)",
-              borderRadius: "2px",
-              padding: "14px 16px 16px",
-              transformOrigin: "top left",
-              opacity: expanded ? 1 : 0,
-              transform: expanded
-                ? "translateY(0) scale(1)"
-                : "translateY(-6px) scale(0.98)",
-              pointerEvents: expanded ? "auto" : "none",
-              transition: "opacity 180ms linear, transform 200ms ease-out",
-              boxShadow: "0 1px 0 var(--line)",
-            }}
-          >
-            <h2
-              style={{
-                fontFamily: DISPLAY,
-                fontWeight: 600,
-                fontSize: "1.5rem",
-                lineHeight: 1.06,
-                color: "var(--ink)",
-                margin: "0 0 8px",
-              }}
-            >
-              Mounish Mavuduru
-            </h2>
-            <p
-              style={{
-                fontFamily: DISPLAY,
-                fontWeight: 400,
-                fontSize: "0.95rem",
-                lineHeight: 1.5,
-                color: "var(--ink-soft)",
-                margin: "0 0 14px",
-                maxWidth: "34ch",
-              }}
-            >
-              {TAGLINE}
-            </p>
-            <ContactButtons />
-          </div>
         </div>
       ) : null}
 
-      {/* Hover affordance: a faint oxblood underline under the initials when the
-          monogram is interactive but collapsed (color/clip only). */}
+      {/* Hover affordance on the monogram/name: ink shifts to oxblood
+          (color only — no transform, no box). */}
       <style>{`
         .mono-btn:hover { color: var(--oxblood); }
       `}</style>
@@ -214,10 +166,10 @@ export default function IntroBlock(): JSX.Element {
 
 /**
  * One half of the monogram: a fixed initial plus the rest of the word, where
- * the rest is revealed by growing its clip width from 0 → auto and sliding it
- * in from the left. Pure clip/transform/opacity — no layout width animation of
- * the surrounding flow beyond the inline-grid track, which the browser sizes
- * via the `1fr` measured track (max-width transitions the visible region).
+ * the rest is revealed by growing its clip width from 0 → its natural width
+ * and sliding it in from the left (~220ms). Pure clip/transform/opacity — the
+ * max-width cap is generous enough for either word so the reveal reads as a
+ * clip, not a squash.
  */
 function NamePart({
   initial,

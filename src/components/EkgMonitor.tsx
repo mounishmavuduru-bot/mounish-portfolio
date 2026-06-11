@@ -7,13 +7,13 @@ import { pointer, subscribeEkg, type EkgEvent } from "@/lib/sceneStore";
 // ---------------------------------------------------------------------------
 // Atlas rhythm-strip HEADER BAR.
 //
-// A classic ECG graph-paper strip pinned to the very top of the viewport: a
-// faint oxblood/salmon grid (small + large squares) printed on the cream paper
-// ground, with a crisp INK/oxblood trace scrolling across it. NO phosphor glow,
-// NO green — this is a printed rhythm strip, not a monitor screen.
+// A plain cream band pinned to the very top of the viewport carrying ONLY a
+// crisp INK/oxblood trace, the HR readout, and the calipers, closed by a single
+// hairline bottom border. No graph-paper grid, NO phosphor glow, NO green —
+// this is a quiet printed strip, not a monitor screen.
 //
 // The left of the bar is reserved blank space (MONOGRAM_INSET) where IntroBlock
-// renders the MM monogram; the trace and grid begin to the right of it.
+// renders the MM monogram; the trace begins to the right of it.
 //
 // It reads the shared `pointer` channel (written by PointerBridge) for the four
 // cursor interactions (deflection-follows-cursor, hr-from-speed beat period,
@@ -23,9 +23,8 @@ import { pointer, subscribeEkg, type EkgEvent } from "@/lib/sceneStore";
 // for the specimen beneath it.
 //
 // Unlike the old phosphor implementation this redraws the whole strip every
-// frame from a rolling ring buffer of sample values. That keeps the trace crisp
-// on light paper (a fading phosphor buffer smears and muddies on cream) and lets
-// the grid sit cleanly behind the ink.
+// frame from a rolling phase model. That keeps the trace crisp on light paper
+// (a fading phosphor buffer smears and muddies on cream).
 // ---------------------------------------------------------------------------
 
 const HEIGHT = 54; // css px — header-bar height (also the overEkg band PointerBridge uses)
@@ -34,10 +33,6 @@ const SPEED = 150; // css px/sec, trace scrolls right → left
 
 // Atlas palette (no green, no glow).
 const INK = "#1a1714";
-const OXBLOOD = "#7c1f1c";
-const PAPER = "#efe7d6";
-const GRID_FINE = "rgba(124, 31, 28, 0.10)"; // small squares — faint salmon
-const GRID_BOLD = "rgba(124, 31, 28, 0.20)"; // every 5th line — stronger salmon
 const CALIPER_INK = "rgba(26, 23, 20, 0.55)";
 const MONO =
   'var(--font-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace';
@@ -46,9 +41,6 @@ const HR_BASE = 64; // resting bpm
 const HR_MAX = 92; // excited bpm under a fast cursor
 const HR_TACHY = 150; // easter-egg tachycardia target
 const CALIPER_GAP = 80; // css px between the two caliper lines
-
-const SMALL_SQ = 11; // css px — one small ECG square
-const BIG_EVERY = 5; // a bold line every 5 small squares
 
 /** Synthetic PQRST as a function of beat phase [0,1). Returns relative amplitude. */
 function pqrst(phase: number): number {
@@ -79,7 +71,6 @@ function pvc(phase: number): number {
 
 export default function EkgMonitor(): JSX.Element {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const gridRef = useRef<HTMLCanvasElement>(null); // static graph-paper grid
   const traceRef = useRef<HTMLCanvasElement>(null); // live trace, redrawn each frame
   // caliper x within the band (css px), null when the cursor is not over the band
   const [caliper, setCaliper] = useState<number | null>(null);
@@ -88,12 +79,10 @@ export default function EkgMonitor(): JSX.Element {
 
   useEffect(() => {
     const wrap = wrapRef.current;
-    const gridCanvas = gridRef.current;
     const traceCanvas = traceRef.current;
-    if (!wrap || !gridCanvas || !traceCanvas) return;
-    const gctx = gridCanvas.getContext("2d");
+    if (!wrap || !traceCanvas) return;
     const tctx = traceCanvas.getContext("2d");
-    if (!gctx || !tctx) return;
+    if (!tctx) return;
 
     let raf = 0;
     let running = false;
@@ -122,69 +111,13 @@ export default function EkgMonitor(): JSX.Element {
     // defib: a single sharp jolt deflection painted at the right edge for a beat.
     let defibPhaseAt = -1;
 
-    // The graph-paper grid is static; it's repainted only on resize.
-    const paintGrid = () => {
-      const wDev = gridCanvas.width;
-      const hDev = gridCanvas.height;
-      gctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      gctx.clearRect(0, 0, wDev / dpr, hDev / dpr);
-      // paper ground
-      gctx.fillStyle = PAPER;
-      gctx.fillRect(0, 0, cssW, HEIGHT);
-
-      // fine + bold grid lines. The grid runs the full width (it reads like a
-      // printed strip continuing under the monogram), in css-px space.
-      gctx.lineWidth = 1;
-      // verticals
-      let n = 0;
-      for (let x = 0; x <= cssW + 0.5; x += SMALL_SQ, n++) {
-        gctx.strokeStyle = n % BIG_EVERY === 0 ? GRID_BOLD : GRID_FINE;
-        gctx.beginPath();
-        gctx.moveTo(x + 0.5, 0);
-        gctx.lineTo(x + 0.5, HEIGHT);
-        gctx.stroke();
-      }
-      // horizontals — center the grid vertically so the baseline sits on a bold line
-      const baseline = HEIGHT * 0.56;
-      // walk up and down from the baseline so a bold line lands on it
-      const drawH = (y: number, idx: number) => {
-        if (y < -0.5 || y > HEIGHT + 0.5) return;
-        gctx.strokeStyle = idx % BIG_EVERY === 0 ? GRID_BOLD : GRID_FINE;
-        gctx.beginPath();
-        gctx.moveTo(0, y + 0.5);
-        gctx.lineTo(cssW, y + 0.5);
-        gctx.stroke();
-      };
-      for (let i = 0; ; i++) {
-        const y = baseline - i * SMALL_SQ;
-        if (y < -0.5) break;
-        drawH(y, i);
-      }
-      for (let i = 1; ; i++) {
-        const y = baseline + i * SMALL_SQ;
-        if (y > HEIGHT + 0.5) break;
-        drawH(y, i);
-      }
-
-      // bottom hairline rule under the whole bar
-      gctx.strokeStyle = "rgba(26, 23, 20, 0.16)";
-      gctx.lineWidth = 1;
-      gctx.beginPath();
-      gctx.moveTo(0, HEIGHT - 0.5);
-      gctx.lineTo(cssW, HEIGHT - 0.5);
-      gctx.stroke();
-    };
-
+    // No grid to paint — the bar is plain cream (CSS background on the wrap)
+    // with a single hairline bottom border; only the trace canvas needs sizing.
     const resize = () => {
       dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
       cssW = Math.max(1, wrap.clientWidth);
-      const wDev = Math.max(1, Math.round(cssW * dpr));
-      const hDev = Math.max(1, Math.round(HEIGHT * dpr));
-      for (const c of [gridCanvas, traceCanvas]) {
-        c.width = wDev;
-        c.height = hDev;
-      }
-      paintGrid();
+      traceCanvas.width = Math.max(1, Math.round(cssW * dpr));
+      traceCanvas.height = Math.max(1, Math.round(HEIGHT * dpr));
     };
 
     // (a) amplitude swell — gaussian centered on the cursor x (css px), so a
@@ -288,14 +221,17 @@ export default function EkgMonitor(): JSX.Element {
       }
       tctx.stroke();
 
-      // a single oxblood leading dot at the newest sample (the "pen")
+      // sharp fade-in at the right edge: the newest signal enters invisible
+      // and resolves to full ink over a narrow band as it scrolls left.
       {
-        const xPen = cssW - 1;
-        const yPen = baseline - sampleAt(xPen) * amp;
-        tctx.fillStyle = OXBLOOD;
-        tctx.beginPath();
-        tctx.arc(xPen, yPen, 1.8, 0, Math.PI * 2);
-        tctx.fill();
+        const FADE_W = 130; // css px — narrow band = sharp ramp
+        const grad = tctx.createLinearGradient(cssW - FADE_W, 0, cssW, 0);
+        grad.addColorStop(0, "rgba(0,0,0,0)");
+        grad.addColorStop(1, "rgba(0,0,0,1)");
+        tctx.globalCompositeOperation = "destination-out";
+        tctx.fillStyle = grad;
+        tctx.fillRect(cssW - FADE_W, 0, FADE_W, HEIGHT);
+        tctx.globalCompositeOperation = "source-over";
       }
 
       // retire the ectopic / defib once they've scrolled off the left edge
@@ -387,8 +323,7 @@ export default function EkgMonitor(): JSX.Element {
       className="pointer-events-none fixed inset-x-0 top-0 z-30 overflow-hidden"
       style={{ height: HEIGHT }}
     >
-      {/* static graph-paper grid, then the live trace over it */}
-      <canvas ref={gridRef} className="absolute inset-0 h-full w-full" />
+      {/* the live trace, redrawn each frame over the plain cream ground */}
       <canvas ref={traceRef} className="absolute inset-0 h-full w-full" />
 
       {/* heart-rate readout, top-right, in ink */}

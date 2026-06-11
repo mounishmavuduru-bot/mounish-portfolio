@@ -5,13 +5,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import {
   BAKED_COUNT,
   MOBILE_COUNT,
   ORGAN_WORLD,
   loadOrganCloud,
 } from "@/lib/organData";
-import { buildNameCloud, buildEnvelopeCloud } from "@/lib/nameCloud";
+import { buildNameCloud, buildLetterCloud } from "@/lib/nameCloud";
 import { ParticleSim, type PointerState } from "@/lib/particleSim";
 import { STATES, useScene, sceneActions, pointer } from "@/lib/sceneStore";
 import { TAGLINE } from "@/data/content";
@@ -25,16 +26,16 @@ import { TAGLINE } from "@/data/content";
 // ---------------------------------------------------------------------------
 
 // Camera. fov 42; distance frames a height-ORGAN_WORLD organ at ~120% (so the
-// organ overflows the edges and feels immersive). The name + envelope clouds
-// are built at worldHeight≈3, so they occupy the middle of the frame and read
-// fully — centered, not clipped — with auto-rotation OFF.
+// organ overflows the edges and feels immersive). The name + letter clouds are
+// built at modest world heights, so they occupy the middle of the frame and
+// read fully — centered, not clipped — with auto-rotation OFF at those states.
 const FOV = 42;
 const FIT_DISTANCE = (ORGAN_WORLD * 0.5) / Math.tan(((FOV / 2) * Math.PI) / 180);
 const CAMERA_Z = FIT_DISTANCE * 0.82; // ~120% overflow for the organ
 
 const NAME_TEXT = "Mounish Mavuduru";
 const NAME_WORLD_HEIGHT = 3.0;
-const ENVELOPE_WORLD_HEIGHT = 3.0;
+const LETTER_WORLD_HEIGHT = 3.4;
 
 // atlas tokens (mirrors globals @theme; used for DOM overlays only)
 const PAPER = "#efe7d6";
@@ -42,6 +43,19 @@ const INK = "#1a1714";
 const OXBLOOD = "#7c1f1c";
 
 const LAST = STATES.length - 1; // 4 (contact) once the 5th state lands
+
+// Auto-rotation: ONLY the organs rotate. The flat plates (intro name, contact
+// letter) must stay framed and legible, so autoRotate is toggled per frame
+// from scrollPos and is only on strictly inside the organ range (0.5..3.5).
+const AUTO_ROTATE_SPEED = 0.8;
+const ROTATE_MIN = 0.5;
+const ROTATE_MAX = LAST - 0.5;
+
+/** Hermite smoothstep, mirrors GLSL smoothstep(e0, e1, x). */
+function smoothstep(e0: number, e1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+}
 
 // ---------------------------------------------------------------------------
 // Palette per state, as [lo, hi] mixed by pow(seed) in the fragment shader, on
@@ -52,7 +66,7 @@ const LAST = STATES.length - 1; // 4 (contact) once the 5th state lands
 //   heart      : oxblood #7c1f1c → ink #1a1714
 //   brain      : ink #1a1714 → sepia #6f6354  (high contrast on cream)
 //   liver      : deep oxblood-brown #5a241c → ink #1a1714
-//   contact    : ink #1a1714 → #4a4038
+//   contact    : ink #1a1714 → #4a4038 (letter sheet)
 // ---------------------------------------------------------------------------
 type Rgb = [number, number, number];
 
@@ -75,7 +89,7 @@ const PALETTES: { lo: Rgb; hi: Rgb; base: number }[] = [
   { lo: HEART_LO, hi: HEART_HI, base: 0.74 },
   { lo: BRAIN_LO, hi: BRAIN_HI, base: 0.74 }, // brain: high contrast on cream
   { lo: LIVER_LO, hi: LIVER_HI, base: 0.74 },
-  { lo: CONTACT_LO, hi: CONTACT_HI, base: 0.78 }, // contact: dark envelope
+  { lo: CONTACT_LO, hi: CONTACT_HI, base: 0.78 }, // contact: dark letter sheet
 ];
 
 function lerpRgb(out: Rgb, a: Rgb, b: Rgb, t: number) {
@@ -139,6 +153,7 @@ uniform vec3 uColorLo;       // dark, heavily-inked tone (near)
 uniform vec3 uColorHi;       // lighter fleck tone (far)
 uniform float uBaseAlpha;    // per-state base opacity
 uniform float uInkFront;     // 0..1 strength of the paper depth inversion
+uniform float uGlobalAlpha;  // uniform fade for the dots→form contact handover
 
 varying float vSeed;
 varying float vDepth;
@@ -154,7 +169,7 @@ void main() {
   // INVERTED for paper: near points (vDepth high) get MORE alpha (heavier ink);
   // far points get LESS alpha and fade toward the cream ground.
   float depthAlpha = mix(1.0, 0.45 + 0.85 * vDepth, uInkFront);
-  float alpha = core * uBaseAlpha * (0.6 + 0.4 * vSeed) * depthAlpha;
+  float alpha = core * uBaseAlpha * uGlobalAlpha * (0.6 + 0.4 * vSeed) * depthAlpha;
 
   // Tone: most particles stay on the dark inked base (uColorLo); sparse high-
   // seed flecks lighten toward uColorHi for stipple variation. Far points also
@@ -208,6 +223,7 @@ function PointCloud({
   onRotateEnd: () => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
 
@@ -245,6 +261,7 @@ function PointCloud({
         },
         uBaseAlpha: { value: PALETTES[0].base },
         uInkFront: { value: 0 },
+        uGlobalAlpha: { value: 1 },
       },
     });
     return { geometry: g, material: m };
@@ -317,6 +334,30 @@ function PointCloud({
     // clamp the morph at both ends of the five-state range [0..LAST]
     s.scrollPos = Math.min(LAST, Math.max(0, s.scrollPos));
 
+    // --- conditional auto-rotation: organs only -------------------------
+    // ON (gentle) strictly inside the organ range; OFF at intro so the name
+    // stays framed and never drifts, OFF at contact so the letter stays
+    // legible. three's OrbitControls already suspends autoRotate during an
+    // active drag, so manual rotation keeps working everywhere.
+    const controls = controlsRef.current;
+    if (controls) {
+      const inOrganRange =
+        s.scrollPos > ROTATE_MIN && s.scrollPos < ROTATE_MAX;
+      controls.autoRotate = inOrganRange;
+      // Outside the organ range the flat plates (intro name, contact letter)
+      // must read front-on, but auto-rotation / manual drags leave the orbit
+      // at an arbitrary azimuth. Ease the camera back to the front view
+      // (azimuth 0, polar PI/2) whenever we're at a plate state and the user
+      // isn't actively dragging. The setters apply via controls.update().
+      if (!inOrganRange && !s.rotating) {
+        const ease = Math.min(1, dt * 3);
+        const az = controls.getAzimuthalAngle();
+        const pol = controls.getPolarAngle();
+        controls.setAzimuthalAngle(az * (1 - ease));
+        controls.setPolarAngle(pol + (Math.PI / 2 - pol) * ease);
+      }
+    }
+
     // build the per-particle blend cloud[i] -> cloud[i+1]
     const pos = s.scrollPos;
     const i = Math.min(LAST, Math.floor(pos));
@@ -370,6 +411,15 @@ function PointCloud({
     uHi.setRGB(colorAcc.hi[0], colorAcc.hi[1], colorAcc.hi[2]);
     material.uniforms.uBaseAlpha.value = colorAcc.base;
     material.uniforms.uInkFront.value = colorAcc.ink;
+
+    // --- contact handover: dots conjoin into the letter, form sharpens ---
+    // While morphing liver→contact (pos in [LAST-1 .. LAST]) the cloud fades
+    // uniformly toward 0.18 late in the morph (f > 0.6), visibly handing over
+    // to the sharp DOM letter form. Driven directly from the eased scrollPos,
+    // so reversing the scroll dissolves the form back into full-opacity dots.
+    const handoverF = Math.min(1, Math.max(0, pos - (LAST - 1)));
+    material.uniforms.uGlobalAlpha.value =
+      1 - 0.82 * smoothstep(0.6, 1, handoverF);
 
     // --- pointer physics in the rotating group's local space ------------
     // Map the global pointer (clientX/Y) into NDC over the canvas rect, then
@@ -434,12 +484,16 @@ function PointCloud({
   return (
     <group ref={groupRef}>
       <points geometry={geometry} material={material} frustumCulled={false} />
-      {/* NO auto-rotation in any state: the intro name stays framed/centered at
-          rest and never drifts off-screen. Manual drag-to-rotate only. */}
+      {/* Auto-rotation is toggled PER FRAME from scrollPos (see useFrame):
+          ON only inside the organ range, OFF at intro (name stays framed,
+          never drifts) and OFF at contact (letter stays legible). Manual
+          drag-to-rotate works everywhere. */}
       <OrbitControls
+        ref={controlsRef}
         enableZoom={false}
         enablePan={false}
         autoRotate={false}
+        autoRotateSpeed={AUTO_ROTATE_SPEED}
         enableDamping
         dampingFactor={0.08}
         onStart={onRotateStart}
@@ -534,9 +588,9 @@ export default function Specimen() {
 
   // -------------------------------------------------------------------------
   // Build the five state clouds: intro name (runtime) + three organs (fetched)
-  // + the contact envelope (runtime). The name + envelope clouds are rebuilt
+  // + the contact letter sheet (runtime). The name + letter clouds are rebuilt
   // after fonts settle / on resize so glyph + stroke metrics are final at DPR.
-  // Clouds land in STATES order: [name, heart, brain, liver, envelope].
+  // Clouds land in STATES order: [name, heart, brain, liver, letter].
   // -------------------------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
@@ -555,8 +609,8 @@ export default function Specimen() {
     const nameReady: Promise<Float32Array> = fontsReady.then(() =>
       buildNameCloud(NAME_TEXT, count, NAME_WORLD_HEIGHT),
     );
-    const envelopeReady: Promise<Float32Array> = fontsReady.then(() =>
-      buildEnvelopeCloud(count, ENVELOPE_WORLD_HEIGHT),
+    const letterReady: Promise<Float32Array> = fontsReady.then(() =>
+      buildLetterCloud(count, LETTER_WORLD_HEIGHT),
     );
 
     Promise.all([
@@ -567,12 +621,12 @@ export default function Specimen() {
           report();
         }),
       ),
-      envelopeReady,
+      letterReady,
     ])
       .then((loaded) => {
         if (cancelled) return;
-        // loaded = [name, heart, brain, liver, envelope] — STATES order, with
-        // the runtime envelope appended last to match clouds[LAST] = contact.
+        // loaded = [name, heart, brain, liver, letter] — STATES order, with
+        // the runtime letter sheet appended last to match clouds[LAST].
         const next = new ParticleSim(count);
         next.setTargets(loaded[0]); // seed with the intro name cloud
         next.positions.set(loaded[0]); // start settled, not springing from 0
@@ -589,7 +643,7 @@ export default function Specimen() {
     };
   }, [attempt]);
 
-  // Rebuild the runtime clouds (name + envelope) on resize; organs are
+  // Rebuild the runtime clouds (name + letter) on resize; organs are
   // scale-independent. Keep the same Float32Array identity by mutating
   // clouds[0] / clouds[LAST] in place so the frame loop's `a === b` fast-path
   // and morph stay valid.
@@ -602,7 +656,7 @@ export default function Specimen() {
       raf = requestAnimationFrame(() => {
         const count = clouds[0].length / 3;
         clouds[0].set(buildNameCloud(NAME_TEXT, count, NAME_WORLD_HEIGHT));
-        clouds[last].set(buildEnvelopeCloud(count, ENVELOPE_WORLD_HEIGHT));
+        clouds[last].set(buildLetterCloud(count, LETTER_WORLD_HEIGHT));
       });
     };
     window.addEventListener("resize", rebuild);

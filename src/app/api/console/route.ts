@@ -89,9 +89,10 @@ function whoamiLines(): string[] {
 }
 
 /**
- * Auscultation notes — points of interest, a couple tied to real work. Mirrors
- * the chart's auscultation tab so the order line and the tab agree. Content is
- * derived from content.ts where it references real projects/research.
+ * Auscultation notes — points of interest, a couple tied to real work. The
+ * order line is the only place to listen now (the chart reads as a single
+ * printed page, no tabs). Content is derived from content.ts where it
+ * references real projects/research.
  */
 function auscultateLines(): string[] {
   const heart = projects[0]?.name ?? "the work";
@@ -101,7 +102,6 @@ function auscultateLines(): string[] {
     `  apex     a steady drive — ${heart}.`,
     `  base     ongoing inquiry — ${research}.`,
     "  margin   a surgeon's hands, still in training.",
-    "  (open the auscultation tab to listen point by point.)",
   ];
 }
 

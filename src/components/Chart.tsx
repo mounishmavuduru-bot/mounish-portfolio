@@ -1,39 +1,34 @@
-/* eslint-disable react-hooks/set-state-in-effect -- sanctioned: a loading toggle around an async pulse fetch, and a collapse-on-organ-change reset; neither cascades */
 "use client";
 
 /**
- * Chart — the unified medical CHART station (replaces the old terminal Console).
+ * Chart — the medical CHART station, read as a single printed page.
  *
- * One paper-card panel in atlas styling that folds together everything the
- * portfolio used to scatter across separate widgets:
+ * One paper-card panel in atlas styling. No tabs, no KPI cards — the chart is
+ * ruled hairlines top to bottom:
  *
- *   • VITALS       — patient = "visitor"; the live global pulse count rendered
- *                    as a vitals readout (a bpm-ish reading), read from
- *                    /api/pulse on open.
- *   • HISTORY      — projects / achievements / positions from content.ts as
- *                    chart entries.
- *   • LOGBOOK      — recent visitor signatures from /api/pulse; a "sign the
- *                    logbook" field POSTs to /api/pulse and refreshes.
- *   • AUSCULTATION — points of interest for the CURRENT organ (read useScene
- *                    index → STATES); clicking a point reveals a note, a couple
- *                    tied to real projects / research.
- *   • ORDERS       — a command line at the bottom routed to /api/console. The
- *                    route returns { lines, ekg? }; when an ekg effect comes
- *                    back (the easter eggs — "code blue", "defib", "tachy", …)
- *                    we forward it to emitEkg() so the rhythm strip reacts.
+ *   • VITALS  — one mono line, "pulse N · rate NN · rhythm sinus", with
+ *               oxblood numerals; the live global pulse count is read from
+ *               /api/pulse when the panel opens.
+ *   • LOGBOOK — recent visitor signatures as ruled ledger lines
+ *               ("— msg · time-ago") with the sign field inline as the last
+ *               line; signing POSTs to /api/pulse and refreshes the shared
+ *               count via sceneActions.setPulses.
+ *   • ORDERS  — a command line at the bottom routed to /api/console. The
+ *               route returns { lines, ekg? }; when an ekg effect comes back
+ *               (the easter eggs — "code blue", "defib", "tachy", …) we
+ *               forward it to emitEkg() so the rhythm strip reacts.
  *
  * Launcher = a small chart-clip control bottom-left; the backtick key toggles
  * from anywhere. Escape closes. Stateless except the pulse round-trips.
  *
  * Atlas language only: paper card (--paper-2), --line hairlines, --ink text,
- * Spectral names, IBM Plex Mono meta, --oxblood on hover/active. Sharp corners
+ * Spectral entries, IBM Plex Mono meta, --oxblood accents. Sharp corners
  * (small controls ≤2px), no green, no glass/backdrop-blur, no glow, no emoji.
  */
 
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -43,26 +38,15 @@ import {
   useScene,
   sceneActions,
   emitEkg,
-  STATES,
   type EkgEvent,
   type PulseState,
 } from "@/lib/sceneStore";
-import { projects, awards, positions, EMAIL } from "@/data/content";
 
 const MONO =
   'var(--font-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace';
 const DISPLAY = "var(--font-display), Spectral, Georgia, serif";
 
 const CLEAR_SENTINEL = "::clear::";
-
-type Tab = "vitals" | "history" | "logbook" | "auscultation";
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: "vitals", label: "vitals" },
-  { id: "history", label: "history" },
-  { id: "logbook", label: "logbook" },
-  { id: "auscultation", label: "auscultation" },
-];
 
 // ---------------------------------------------------------------------------
 // Orders scrollback line model
@@ -85,121 +69,7 @@ const ORDERS_BANNER: Omit<OrderLine, "id">[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Auscultation notes, keyed by the current organ state. A couple are tied to
-// real projects / research from content.ts so the chart stays content-derived.
-// ---------------------------------------------------------------------------
-
-interface AuscultationPoint {
-  point: string;
-  site: string;
-  note: string;
-}
-
-function auscultationFor(stateId: string): {
-  organ: string;
-  points: AuscultationPoint[];
-} {
-  const heart = projects[0]?.name ?? "the work";
-  const research = projects[1]?.name ?? "the research";
-  const review = projects[3]?.name ?? "the review";
-
-  switch (stateId) {
-    case "heart":
-      return {
-        organ: "heart",
-        points: [
-          {
-            point: "apex",
-            site: "S1 · mitral",
-            note: `A steady drive — ${heart}. The thing he keeps building.`,
-          },
-          {
-            point: "base",
-            site: "S2 · aortic",
-            note: "Clean closure. Decisions made, then lived with.",
-          },
-          {
-            point: "margin",
-            site: "soft murmur",
-            note: "A surgeon's hands, still in training — listening more than cutting.",
-          },
-        ],
-      };
-    case "brain":
-      return {
-        organ: "brain",
-        points: [
-          {
-            point: "frontal",
-            site: "planning",
-            note: `Ongoing inquiry — ${research}.`,
-          },
-          {
-            point: "temporal",
-            site: "language",
-            note: `On how words shape choice — ${review}.`,
-          },
-          {
-            point: "cerebellum",
-            site: "coordination",
-            note: "Awards and honors held lightly; the work is the point.",
-          },
-        ],
-      };
-    case "liver":
-      return {
-        organ: "liver",
-        points: [
-          {
-            point: "right lobe",
-            site: "synthesis",
-            note: "Roles held — quietly load-bearing for a team.",
-          },
-          {
-            point: "portal",
-            site: "throughput",
-            note: "Operations: turning intent into something that ships.",
-          },
-          {
-            point: "margin",
-            site: "reserve",
-            note: "Resilient tissue. Regenerates. So does the person.",
-          },
-        ],
-      };
-    case "contact":
-      return {
-        organ: "the envelope",
-        points: [
-          {
-            point: "address",
-            site: "where to write",
-            note: `Reach him directly at ${EMAIL}.`,
-          },
-          {
-            point: "seal",
-            site: "elsewhere",
-            note: "GitHub and LinkedIn are linked at the foot of the page.",
-          },
-        ],
-      };
-    default:
-      // intro / name state — there is no organ on the table yet.
-      return {
-        organ: "the specimen",
-        points: [
-          {
-            point: "overview",
-            site: "no organ selected",
-            note: "Scroll to bring the heart, brain, or liver onto the table — then auscultate.",
-          },
-        ],
-      };
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Pulse refresh — shared with the logbook tab + orders sign command.
+// Pulse refresh — shared by the panel open and the orders sign command.
 // ---------------------------------------------------------------------------
 
 async function fetchPulses(): Promise<PulseState | null> {
@@ -226,7 +96,6 @@ async function fetchPulses(): Promise<PulseState | null> {
 
 export default function Chart() {
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<Tab>("vitals");
   const launcherRef = useRef<HTMLButtonElement | null>(null);
 
   // backtick toggles from anywhere; Escape closes.
@@ -276,8 +145,6 @@ export default function Chart() {
 
       {open ? (
         <ChartPanel
-          tab={tab}
-          setTab={setTab}
           onClose={() => {
             setOpen(false);
             requestAnimationFrame(() => launcherRef.current?.focus());
@@ -316,114 +183,18 @@ function ClipMark() {
 }
 
 // ===========================================================================
-// Panel
+// Panel — one printed-chart view: vitals line, logbook ledger, orders.
 // ===========================================================================
 
-function ChartPanel({
-  tab,
-  setTab,
-  onClose,
-}: {
-  tab: Tab;
-  setTab: (t: Tab) => void;
-  onClose: () => void;
-}) {
-  const stateIndex = useScene((s) => s.index);
-  const currentState = STATES[stateIndex] ?? STATES[0];
-
-  return (
-    <section role="dialog" aria-label="patient chart" style={panelStyle}>
-      {/* header */}
-      <header style={headerStyle}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <span style={chartTitleStyle}>Patient chart</span>
-          <span style={chartSubStyle}>
-            visitor · {currentState.label.toLowerCase()}
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="close chart"
-          style={closeButtonStyle}
-          className="chart-close"
-        >
-          close
-        </button>
-      </header>
-
-      {/* tabs */}
-      <nav style={tabsStyle} aria-label="chart sections">
-        {TABS.map((t) => {
-          const active = t.id === tab;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              aria-pressed={active}
-              className="chart-tab"
-              style={{
-                ...tabButtonStyle,
-                color: active ? "var(--ink)" : "var(--sepia)",
-                borderBottomColor: active ? "var(--oxblood)" : "transparent",
-              }}
-            >
-              {t.label}
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* body */}
-      <div style={bodyStyle}>
-        {tab === "vitals" ? <VitalsTab /> : null}
-        {tab === "history" ? <HistoryTab /> : null}
-        {tab === "logbook" ? <LogbookTab /> : null}
-        {tab === "auscultation" ? (
-          <AuscultationTab stateId={currentState.id} />
-        ) : null}
-      </div>
-
-      {/* orders input — always present, the running command line */}
-      <OrdersBar />
-
-      <style>{`
-        .chart-tab:hover { color: var(--ink); }
-        .chart-tab:focus-visible { color: var(--oxblood); }
-        .chart-close:hover,
-        .chart-close:focus-visible { border-color: var(--oxblood); color: var(--oxblood); }
-        .chart-entry:hover { border-left-color: var(--oxblood); }
-        .ausc-point:hover,
-        .ausc-point:focus-visible { border-color: var(--oxblood); color: var(--ink); }
-        .ausc-point[aria-expanded="true"] { border-color: var(--oxblood); }
-        .chart-sign-btn:hover,
-        .chart-sign-btn:focus-visible { background: var(--oxblood); color: var(--paper); }
-        .chart-link:hover,
-        .chart-link:focus-visible { color: var(--oxblood); }
-      `}</style>
-    </section>
-  );
-}
-
-// ===========================================================================
-// VITALS tab
-// ===========================================================================
-
-function VitalsTab() {
+function ChartPanel({ onClose }: { onClose: () => void }) {
   const pulses = useScene((s) => s.pulses);
-  const [loading, setLoading] = useState(false);
-  const [touched, setTouched] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Refresh the live count when the tab mounts (best-effort).
+  // Refresh the live count once when the panel opens (best-effort).
   useEffect(() => {
     let alive = true;
-    setLoading(true);
     void fetchPulses().finally(() => {
-      if (alive) {
-        setLoading(false);
-        setTouched(true);
-      }
+      if (alive) setLoading(false);
     });
     return () => {
       alive = false;
@@ -435,115 +206,57 @@ function VitalsTab() {
   const bpm = 60 + (pulses.count % 40);
 
   return (
-    <div>
-      <SectionLabel>vitals — visitor</SectionLabel>
+    <section role="dialog" aria-label="patient chart" style={panelStyle}>
+      {/* header */}
+      <header style={headerStyle}>
+        <span style={chartTitleStyle}>Patient chart</span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="close chart"
+          style={closeButtonStyle}
+          className="chart-close"
+        >
+          close
+        </button>
+      </header>
 
-      <div style={vitalsGridStyle}>
-        <Vital
-          label="pulse"
-          value={loading && !touched ? "··" : String(pulses.count)}
-          unit="beats logged"
-          accent
-        />
-        <Vital
-          label="rate"
-          value={loading && !touched ? "··" : String(bpm)}
-          unit="bpm (est.)"
-        />
-        <Vital
-          label="rhythm"
-          value="sinus"
-          unit={pulses.persisted ? "persisted" : "in-memory"}
-        />
+      {/* body — the printed page */}
+      <div style={bodyStyle}>
+        <p style={vitalsLineStyle}>
+          pulse{" "}
+          <span style={vitalNumStyle}>
+            {loading ? "··" : String(pulses.count)}
+          </span>
+          {" · "}rate{" "}
+          <span style={vitalNumStyle}>{loading ? "··" : String(bpm)}</span>
+          {" · "}rhythm sinus
+        </p>
+
+        <Logbook />
       </div>
 
-      <p style={vitalsNoteStyle}>
-        Each visit adds a beat to the global pulse. Sign the logbook to leave
-        your mark on the strip.
-      </p>
-    </div>
-  );
-}
+      {/* orders input — always present, the running command line */}
+      <OrdersBar />
 
-function Vital({
-  label,
-  value,
-  unit,
-  accent,
-}: {
-  label: string;
-  value: string;
-  unit: string;
-  accent?: boolean;
-}) {
-  return (
-    <div style={vitalCardStyle}>
-      <span style={vitalLabelStyle}>{label}</span>
-      <span
-        style={{
-          ...vitalValueStyle,
-          color: accent ? "var(--oxblood)" : "var(--ink)",
-        }}
-      >
-        {value}
-      </span>
-      <span style={vitalUnitStyle}>{unit}</span>
-    </div>
+      <style>{`
+        .chart-close:hover,
+        .chart-close:focus-visible { border-color: var(--oxblood); color: var(--oxblood); }
+      `}</style>
+    </section>
   );
 }
 
 // ===========================================================================
-// HISTORY tab
+// Logbook — ruled ledger lines + the sign field inline as the last line.
 // ===========================================================================
 
-function HistoryTab() {
-  return (
-    <div>
-      <SectionLabel>history — projects &amp; research</SectionLabel>
-      {projects.map((p) => (
-        <Entry key={p.name} primary={p.name} meta={p.tag} />
-      ))}
-
-      <SectionLabel spaced>history — achievements</SectionLabel>
-      {awards.map((a) => (
-        <Entry key={a.name} primary={a.name} meta={a.org} />
-      ))}
-
-      <SectionLabel spaced>history — positions</SectionLabel>
-      {positions.map((p) => (
-        <Entry
-          key={`${p.role}-${p.org}`}
-          primary={p.role}
-          meta={p.org || "—"}
-        />
-      ))}
-    </div>
-  );
-}
-
-function Entry({ primary, meta }: { primary: string; meta: string }) {
-  return (
-    <div className="chart-entry" style={entryStyle}>
-      <span style={entryPrimaryStyle}>{primary}</span>
-      <span style={entryMetaStyle}>{meta}</span>
-    </div>
-  );
-}
-
-// ===========================================================================
-// LOGBOOK tab
-// ===========================================================================
-
-function LogbookTab() {
+function Logbook() {
   const pulses = useScene((s) => s.pulses);
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [signed, setSigned] = useState(false);
-
-  useEffect(() => {
-    void fetchPulses();
-  }, []);
 
   const onSubmit = useCallback(
     async (e: FormEvent) => {
@@ -583,22 +296,25 @@ function LogbookTab() {
 
   return (
     <div>
-      <SectionLabel>logbook — visitor signatures</SectionLabel>
+      <h3 style={logLabelStyle}>logbook</h3>
 
       {pulses.recent.length === 0 ? (
         <p style={emptyStyle}>No signatures yet. Be the first to sign in.</p>
       ) : (
-        <ul style={logListStyle}>
+        <ul style={ledgerStyle}>
           {pulses.recent.map((r, i) => (
-            <li key={`${r.ts}-${i}`} style={logItemStyle}>
-              <span style={logMsgStyle}>{r.msg}</span>
-              <span style={logTsStyle}>{formatTs(r.ts)}</span>
+            <li key={`${r.ts}-${i}`} style={ledgerLineStyle}>
+              <span style={ledgerMsgStyle}>— {r.msg}</span>
+              <span style={ledgerAgoStyle}>· {formatAgo(r.ts)}</span>
             </li>
           ))}
         </ul>
       )}
 
       <form onSubmit={onSubmit} style={signFormStyle}>
+        <span aria-hidden style={signDashStyle}>
+          —
+        </span>
         <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -637,65 +353,32 @@ function LogbookTab() {
       ) : null}
 
       <style>{`
-        .chart-sign-input:focus-visible { border-color: var(--oxblood); }
+        .chart-sign-input:focus-visible { border-bottom-color: var(--oxblood); }
+        .chart-sign-btn:hover:enabled,
+        .chart-sign-btn:focus-visible { color: var(--oxblood); }
       `}</style>
     </div>
   );
 }
 
-function formatTs(ts: number): string {
+/** Relative "time-ago" for ledger lines; falls back to a short date. */
+function formatAgo(ts: number): string {
   if (!Number.isFinite(ts) || ts <= 0) return "";
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return "just now";
+  const m = Math.floor(diff / 60_000);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 14) return `${d}d ago`;
   try {
-    return new Date(ts).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-    });
+    return new Date(ts)
+      .toLocaleDateString(undefined, { month: "short", day: "numeric" })
+      .toLowerCase();
   } catch {
     return "";
   }
-}
-
-// ===========================================================================
-// AUSCULTATION tab — points for the CURRENT organ; click reveals a note.
-// ===========================================================================
-
-function AuscultationTab({ stateId }: { stateId: string }) {
-  const data = useMemo(() => auscultationFor(stateId), [stateId]);
-  const [openPoint, setOpenPoint] = useState<string | null>(null);
-
-  // Collapse any open note when the organ changes underneath us.
-  useEffect(() => {
-    setOpenPoint(null);
-  }, [stateId]);
-
-  return (
-    <div>
-      <SectionLabel>auscultation — {data.organ}</SectionLabel>
-      <p style={auscIntroStyle}>
-        Place the bell. Tap a point to listen.
-      </p>
-      <ul style={auscListStyle}>
-        {data.points.map((pt) => {
-          const isOpen = openPoint === pt.point;
-          return (
-            <li key={pt.point}>
-              <button
-                type="button"
-                className="ausc-point"
-                aria-expanded={isOpen}
-                onClick={() => setOpenPoint(isOpen ? null : pt.point)}
-                style={auscPointStyle}
-              >
-                <span style={auscPointNameStyle}>{pt.point}</span>
-                <span style={auscPointSiteStyle}>{pt.site}</span>
-              </button>
-              {isOpen ? <p style={auscNoteStyle}>{pt.note}</p> : null}
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
 }
 
 // ===========================================================================
@@ -820,24 +503,6 @@ function OrdersBar() {
 }
 
 // ===========================================================================
-// Small shared label
-// ===========================================================================
-
-function SectionLabel({
-  children,
-  spaced,
-}: {
-  children: React.ReactNode;
-  spaced?: boolean;
-}) {
-  return (
-    <h3 style={{ ...sectionLabelStyle, marginTop: spaced ? 16 : 0 }}>
-      {children}
-    </h3>
-  );
-}
-
-// ===========================================================================
 // Styles (atlas: paper card, ink, oxblood, Spectral + mono, sharp, hairline)
 // ===========================================================================
 
@@ -877,7 +542,7 @@ const panelStyle: CSSProperties = {
 
 const headerStyle: CSSProperties = {
   display: "flex",
-  alignItems: "flex-start",
+  alignItems: "baseline",
   justifyContent: "space-between",
   padding: "10px 12px 8px",
   borderBottom: "1px solid var(--line)",
@@ -890,14 +555,6 @@ const chartTitleStyle: CSSProperties = {
   fontSize: "1.02rem",
   lineHeight: 1.05,
   color: "var(--ink)",
-};
-
-const chartSubStyle: CSSProperties = {
-  fontFamily: MONO,
-  fontSize: "0.58rem",
-  letterSpacing: "0.12em",
-  textTransform: "uppercase",
-  color: "var(--sepia)",
 };
 
 const closeButtonStyle: CSSProperties = {
@@ -913,147 +570,69 @@ const closeButtonStyle: CSSProperties = {
   transition: "border-color 150ms linear, color 150ms linear",
 };
 
-const tabsStyle: CSSProperties = {
-  display: "flex",
-  gap: 2,
-  padding: "0 12px",
-  borderBottom: "1px solid var(--line)",
-  flex: "0 0 auto",
-};
-
-const tabButtonStyle: CSSProperties = {
-  background: "transparent",
-  border: "none",
-  borderBottom: "2px solid transparent",
-  borderRadius: 0,
-  font: `500 9.5px/1 ${MONO}`,
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
-  padding: "8px 6px",
-  marginBottom: -1,
-  cursor: "pointer",
-  transition: "color 150ms linear, border-color 150ms linear",
-};
-
 const bodyStyle: CSSProperties = {
   flex: "1 1 auto",
   overflowY: "auto",
   padding: "12px",
 };
 
-const sectionLabelStyle: CSSProperties = {
+// --- vitals line ------------------------------------------------------------
+
+const vitalsLineStyle: CSSProperties = {
   fontFamily: MONO,
-  fontSize: "0.58rem",
+  fontSize: "0.68rem",
+  letterSpacing: "0.08em",
+  lineHeight: 1.4,
+  color: "var(--ink-soft)",
+  margin: 0,
+  padding: "2px 0 12px",
+  borderBottom: "1px solid var(--line)",
+};
+
+const vitalNumStyle: CSSProperties = {
+  color: "var(--oxblood)",
+  fontWeight: 600,
+};
+
+// --- logbook ledger ----------------------------------------------------------
+
+const logLabelStyle: CSSProperties = {
+  fontFamily: MONO,
+  fontSize: "0.56rem",
   letterSpacing: "0.14em",
   textTransform: "uppercase",
   color: "var(--sepia)",
-  margin: "0 0 8px",
   fontWeight: 500,
+  margin: "14px 0 2px",
 };
-
-// --- vitals ---------------------------------------------------------------
-
-const vitalsGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(3, 1fr)",
-  gap: 8,
-};
-
-const vitalCardStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 3,
-  padding: "10px 10px 9px",
-  background: "var(--paper)",
-  border: "1px solid var(--line)",
-  borderRadius: 2,
-};
-
-const vitalLabelStyle: CSSProperties = {
-  fontFamily: MONO,
-  fontSize: "0.54rem",
-  letterSpacing: "0.12em",
-  textTransform: "uppercase",
-  color: "var(--sepia)",
-};
-
-const vitalValueStyle: CSSProperties = {
-  fontFamily: DISPLAY,
-  fontWeight: 600,
-  fontSize: "1.5rem",
-  lineHeight: 1,
-};
-
-const vitalUnitStyle: CSSProperties = {
-  fontFamily: MONO,
-  fontSize: "0.52rem",
-  letterSpacing: "0.06em",
-  color: "var(--ink-soft)",
-};
-
-const vitalsNoteStyle: CSSProperties = {
-  fontFamily: DISPLAY,
-  fontSize: "0.86rem",
-  lineHeight: 1.45,
-  color: "var(--ink-soft)",
-  margin: "12px 0 0",
-};
-
-// --- history --------------------------------------------------------------
-
-const entryStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 2,
-  padding: "7px 0 7px 10px",
-  borderLeft: "2px solid var(--line)",
-  marginBottom: 2,
-  transition: "border-color 150ms linear",
-};
-
-const entryPrimaryStyle: CSSProperties = {
-  fontFamily: DISPLAY,
-  fontWeight: 500,
-  fontSize: "0.94rem",
-  lineHeight: 1.3,
-  color: "var(--ink)",
-};
-
-const entryMetaStyle: CSSProperties = {
-  fontFamily: MONO,
-  fontSize: "0.58rem",
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "var(--sepia)",
-};
-
-// --- logbook --------------------------------------------------------------
 
 const emptyStyle: CSSProperties = {
   fontFamily: DISPLAY,
   fontSize: "0.88rem",
   color: "var(--ink-soft)",
-  margin: "0 0 12px",
+  margin: "6px 0 0",
+  padding: "0 0 7px",
+  borderBottom: "1px solid var(--line)",
 };
 
-const logListStyle: CSSProperties = {
+const ledgerStyle: CSSProperties = {
   listStyle: "none",
-  margin: "0 0 12px",
+  margin: 0,
   padding: 0,
   display: "flex",
   flexDirection: "column",
 };
 
-const logItemStyle: CSSProperties = {
+const ledgerLineStyle: CSSProperties = {
   display: "flex",
   alignItems: "baseline",
   justifyContent: "space-between",
   gap: 10,
-  padding: "6px 0",
+  padding: "7px 0",
   borderBottom: "1px solid var(--line)",
 };
 
-const logMsgStyle: CSSProperties = {
+const ledgerMsgStyle: CSSProperties = {
   fontFamily: DISPLAY,
   fontSize: "0.9rem",
   lineHeight: 1.35,
@@ -1062,27 +641,38 @@ const logMsgStyle: CSSProperties = {
   minWidth: 0,
 };
 
-const logTsStyle: CSSProperties = {
+const ledgerAgoStyle: CSSProperties = {
   fontFamily: MONO,
-  fontSize: "0.54rem",
+  fontSize: "0.56rem",
   letterSpacing: "0.06em",
   color: "var(--sepia)",
   flex: "0 0 auto",
 };
 
+// --- inline sign line ---------------------------------------------------------
+
 const signFormStyle: CSSProperties = {
   display: "flex",
+  alignItems: "baseline",
   gap: 8,
-  alignItems: "stretch",
+  padding: "7px 0 0",
+};
+
+const signDashStyle: CSSProperties = {
+  fontFamily: DISPLAY,
+  fontSize: "0.9rem",
+  color: "var(--sepia)",
+  flex: "0 0 auto",
 };
 
 const signInputStyle: CSSProperties = {
   flex: 1,
   minWidth: 0,
-  background: "var(--paper)",
-  border: "1px solid var(--line)",
-  borderRadius: 2,
-  padding: "7px 9px",
+  background: "transparent",
+  border: "none",
+  borderBottom: "1px solid var(--line)",
+  borderRadius: 0,
+  padding: "0 0 5px",
   fontFamily: DISPLAY,
   fontSize: "0.9rem",
   color: "var(--ink)",
@@ -1091,16 +681,16 @@ const signInputStyle: CSSProperties = {
 };
 
 const signButtonStyle: CSSProperties = {
-  background: "var(--paper-2)",
-  color: "var(--ink)",
-  border: "1px solid var(--line)",
-  borderRadius: 2,
-  padding: "0 14px",
+  background: "transparent",
+  border: "none",
+  borderRadius: 0,
+  padding: "0 2px 5px",
   fontFamily: MONO,
   fontSize: "0.6rem",
   letterSpacing: "0.1em",
   textTransform: "uppercase",
-  transition: "background 150ms linear, color 150ms linear, border-color 150ms linear",
+  color: "var(--ink-soft)",
+  transition: "color 150ms linear, opacity 150ms linear",
 };
 
 const signErrorStyle: CSSProperties = {
@@ -1119,67 +709,7 @@ const signOkStyle: CSSProperties = {
   margin: "8px 0 0",
 };
 
-// --- auscultation ---------------------------------------------------------
-
-const auscIntroStyle: CSSProperties = {
-  fontFamily: DISPLAY,
-  fontSize: "0.86rem",
-  fontStyle: "italic",
-  color: "var(--ink-soft)",
-  margin: "0 0 10px",
-};
-
-const auscListStyle: CSSProperties = {
-  listStyle: "none",
-  margin: 0,
-  padding: 0,
-  display: "flex",
-  flexDirection: "column",
-  gap: 6,
-};
-
-const auscPointStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "baseline",
-  justifyContent: "space-between",
-  gap: 10,
-  width: "100%",
-  background: "var(--paper)",
-  border: "1px solid var(--line)",
-  borderRadius: 2,
-  padding: "8px 10px",
-  cursor: "pointer",
-  color: "var(--ink-soft)",
-  textAlign: "left",
-  transition: "border-color 150ms linear, color 150ms linear",
-};
-
-const auscPointNameStyle: CSSProperties = {
-  fontFamily: DISPLAY,
-  fontWeight: 500,
-  fontSize: "0.94rem",
-  color: "inherit",
-};
-
-const auscPointSiteStyle: CSSProperties = {
-  fontFamily: MONO,
-  fontSize: "0.56rem",
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "var(--sepia)",
-  flex: "0 0 auto",
-};
-
-const auscNoteStyle: CSSProperties = {
-  fontFamily: DISPLAY,
-  fontSize: "0.88rem",
-  lineHeight: 1.45,
-  color: "var(--ink)",
-  margin: "6px 0 0",
-  padding: "0 4px 4px 4px",
-};
-
-// --- orders ---------------------------------------------------------------
+// --- orders -------------------------------------------------------------------
 
 const ordersWrapStyle: CSSProperties = {
   flex: "0 0 auto",

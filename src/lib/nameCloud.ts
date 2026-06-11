@@ -168,19 +168,20 @@ export function buildNameCloud(
 }
 
 /**
- * Build a particle cloud in the shape of a simple envelope — a rectangle
- * outline with two diagonal flap lines meeting at the top-center, drawn in
- * thick strokes on an offscreen canvas. The opaque pixels are sampled and
- * resampled to EXACTLY `count` points, centered and scaled so the envelope is
- * ≈ `worldHeight` tall, with a small ±Z depth so it reads as engraved stipple
- * rather than a flat sheet.
+ * Build a particle cloud in the shape of a LETTER SHEET — a portrait paper
+ * page: a strong rectangular border, five horizontal ruled lines inside, and a
+ * small stamp square at the top-right, drawn in thick strokes on an offscreen
+ * canvas. The opaque pixels are sampled and resampled to EXACTLY `count`
+ * points, centered and scaled so the sheet is ≈ `worldHeight` tall, with a
+ * small ±Z depth so it reads as engraved stipple rather than a flat plate.
  *
- * Used by the 5th "contact" state (clouds[4]). Client-only (needs canvas) but,
- * like buildNameCloud, NEVER throws — any failure falls back to a centered grid
- * of exactly `count` points, so the caller always gets a Float32Array of
- * length count*3.
+ * Used by the 5th "contact" state (clouds[4]) — the dots conjoin into the
+ * sheet that the DOM contact form then sharpens out of. Client-only (needs
+ * canvas) but, like buildNameCloud, NEVER throws — any failure falls back to a
+ * centered grid of exactly `count` points, so the caller always gets a
+ * Float32Array of length count*3.
  */
-export function buildEnvelopeCloud(
+export function buildLetterCloud(
   count: number,
   worldHeight: number,
 ): Float32Array {
@@ -200,32 +201,29 @@ export function buildEnvelopeCloud(
   }
   if (!ctx) return fallbackGrid(count, worldHeight);
 
-  // A wide landscape envelope (~3:2). Generous resolution so strokes sample
+  // A portrait sheet (~A4-ish aspect). Generous resolution so strokes sample
   // densely along their length.
-  const cw = 900;
-  const ch = 600;
+  const cw = 640;
+  const ch = 880;
   canvas.width = cw;
   canvas.height = ch;
 
-  // Inset the envelope body from the canvas edges so thick strokes don't clip.
-  const m = 80;
+  // Inset the sheet from the canvas edges so thick strokes don't clip.
+  const m = 70;
   const left = m;
   const right = cw - m;
   const top = m;
   const bottom = ch - m;
-  const midX = (left + right) / 2;
-  // The flap apex sits a little below the top edge so the two diagonals form a
-  // classic closed-envelope "V".
-  const flapY = top + (bottom - top) * 0.46;
 
   try {
     ctx.clearRect(0, 0, cw, ch);
     ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 26; // thick so the outline reads as a solid band of points
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
 
-    // Rectangle body outline.
+    // Sheet outline — the strongest stroke, so the page edge reads as the
+    // densest band of points.
+    ctx.lineWidth = 22;
     ctx.beginPath();
     ctx.moveTo(left, top);
     ctx.lineTo(right, top);
@@ -234,11 +232,29 @@ export function buildEnvelopeCloud(
     ctx.closePath();
     ctx.stroke();
 
-    // Two diagonal flap lines: top-left → apex and top-right → apex.
+    // Small stamp square, top-right inside the sheet.
+    const stampInset = 42;
+    const stampSize = 86;
+    ctx.lineWidth = 12;
+    ctx.strokeRect(
+      right - stampInset - stampSize,
+      top + stampInset,
+      stampSize,
+      stampSize,
+    );
+
+    // Five horizontal ruled lines below the stamp block — the writing area.
+    // Thinner than the border so the page edge stays dominant.
+    const ruleInset = 56;
+    const ruleTop = top + 220;
+    const ruleGap = 100;
+    ctx.lineWidth = 9;
     ctx.beginPath();
-    ctx.moveTo(left, top);
-    ctx.lineTo(midX, flapY);
-    ctx.lineTo(right, top);
+    for (let r = 0; r < 5; r++) {
+      const y = ruleTop + r * ruleGap;
+      ctx.moveTo(left + ruleInset, y);
+      ctx.lineTo(right - ruleInset, y);
+    }
     ctx.stroke();
   } catch {
     return fallbackGrid(count, worldHeight);
@@ -269,7 +285,7 @@ export function buildEnvelopeCloud(
     return fallbackGrid(count, worldHeight);
   }
 
-  // Scale by HEIGHT so the envelope is ≈ worldHeight tall; preserve aspect.
+  // Scale by HEIGHT so the sheet is ≈ worldHeight tall; preserve aspect.
   const scale = worldHeight / ch;
   const depth = 0.08 * worldHeight; // small ±Z depth
   const halfW = (cw * scale) / 2;
@@ -304,3 +320,9 @@ export function buildEnvelopeCloud(
 
   return out;
 }
+
+/**
+ * Back-compat alias: the contact state used to be an envelope; it is now the
+ * letter sheet. Kept so any older import keeps working.
+ */
+export const buildEnvelopeCloud = buildLetterCloud;

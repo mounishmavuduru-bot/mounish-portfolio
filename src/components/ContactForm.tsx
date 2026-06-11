@@ -1,18 +1,27 @@
 "use client";
 
 /**
- * ContactForm — the overlay for the 5th "contact" state.
+ * ContactForm — the letter the dots conjoin into (5th "contact" state).
  *
- * Renders only when the scene index === 4 (the envelope-shape state). An atlas
- * card with name / email / message fields, a hidden honeypot ("website"), and a
- * min-fill-time guard (the mount timestamp `t` is POSTed alongside; the server
- * rejects submissions faster than its threshold). Client-side validation runs
- * first so the user gets immediate feedback; the server re-validates.
+ * Renders only when the scene index === 4. The particles morph into a portrait
+ * letter sheet (buildLetterCloud in Specimen); this DOM layer is the sharp
+ * letter that condenses out of them. No outer card box — the form IS the sheet
+ * area: a centred portrait region matching the particle sheet's aspect, with
+ * Spectral text on ruled 1px underlines (no boxed inputs), small mono
+ * superscript labels, an oxblood postmark-style send stamp (sharp corners,
+ * -2deg), a hairline stamp square top-right echoing the particle stamp, and a
+ * quiet mailto line pinned to the sheet's foot.
  *
- * States are explicit: idle → submitting → success | error. The submit button
- * is disabled while submitting. A direct mailto link is always offered as a
- * fallback. Atlas styling throughout: paper card, ink text, oxblood submit,
- * Spectral labels, mono meta, sharp corners, hairline borders. No glass/glow.
+ * Coalesce: f = clamp(progress - 3, 0, 1) from the scene store. The sheet's
+ * opacity is smoothstep(0.55→0.95 of f) and it scales 0.985→1, scrubbed
+ * directly by scroll (no easing fight) so reversing scroll dissolves the form
+ * back into dots. Rows fade + rise in a 60ms stagger once f > 0.6; the sheet
+ * only accepts pointer/keyboard input (pointer-events + inert) once f > 0.8.
+ *
+ * Submission behavior is unchanged: hidden honeypot ("website"), mount
+ * timestamp `t` POSTed for the server's min-fill-time guard, client-side
+ * validation mirroring the server, explicit idle → submitting → success |
+ * error states, disabled-while-submitting, POST /api/contact.
  */
 
 import {
@@ -45,6 +54,12 @@ interface Fields {
 
 const EMPTY: Fields = { name: "", email: "", message: "" };
 
+/** Hermite smoothstep of x across [a, b], clamped. */
+function smoothstep(a: number, b: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+
 export default function ContactForm() {
   const index = useScene((s) => s.index);
   const visible = index === 4;
@@ -52,10 +67,17 @@ export default function ContactForm() {
   // Remount the body whenever the contact state is (re)entered so the mount
   // timestamp + fields reset cleanly and the timing guard measures real fill.
   if (!visible) return null;
-  return <ContactCard />;
+  return <LetterSheet />;
 }
 
-function ContactCard() {
+function LetterSheet() {
+  // Continuous morph progress; f scrubs the letter in over the 3→4 morph.
+  const progress = useScene((s) => s.progress);
+  const f = Math.min(1, Math.max(0, progress - 3));
+  const reveal = smoothstep(0.55, 0.95, f);
+  const staged = f > 0.6; // rows begin their 60ms stagger
+  const interactive = f > 0.8; // pointer + focus only near full coalesce
+
   const [fields, setFields] = useState<Fields>(EMPTY);
   const [honeypot, setHoneypot] = useState(""); // bots fill this; humans can't see it
   const [status, setStatus] = useState<Status>("idle");
@@ -140,13 +162,29 @@ function ContactCard() {
   const submitting = status === "submitting";
 
   return (
-    <div style={overlayStyle} role="region" aria-label="contact form">
-      <div style={cardStyle}>
-        <h2 style={titleStyle}>Get in touch</h2>
-        <p style={leadStyle}>
-          A note finds its way to Mounish. Leave a line and an address to reach
-          you.
-        </p>
+    <div style={overlayStyle} role="region" aria-label="contact letter">
+      <div
+        inert={!interactive}
+        style={{
+          ...sheetStyle,
+          opacity: reveal,
+          visibility: reveal > 0.001 ? "visible" : "hidden",
+          transform: `scale(${0.985 + 0.015 * reveal})`,
+          pointerEvents: interactive ? "auto" : "none",
+        }}
+      >
+        {/* Stamp square — echoes the particle stamp, top-right of the sheet. */}
+        <div aria-hidden style={stampStyle}>
+          <span style={stampTextStyle}>mm</span>
+        </div>
+
+        <div className="cf-row" style={{ ...rowStyle(0, staged), ...headStyle }}>
+          <h2 style={titleStyle}>Get in touch</h2>
+          <p style={leadStyle}>
+            A note finds its way to Mounish. Leave a line and an address to
+            reach you.
+          </p>
+        </div>
 
         {status === "success" ? (
           <div style={successWrapStyle} role="status">
@@ -157,6 +195,7 @@ function ContactCard() {
             </p>
             <button
               type="button"
+              className="cf-ghost"
               onClick={() => {
                 setStatus("idle");
                 setError("");
@@ -169,7 +208,7 @@ function ContactCard() {
             </button>
           </div>
         ) : (
-          <form onSubmit={onSubmit} noValidate>
+          <form onSubmit={onSubmit} noValidate style={formStyle}>
             {/* Honeypot — visually hidden, off the tab order, ignored by humans. */}
             <div aria-hidden style={honeypotWrapStyle}>
               <label htmlFor="cf-website">do not fill this field</label>
@@ -184,7 +223,13 @@ function ContactCard() {
               />
             </div>
 
-            <Field label="Name" htmlFor="cf-name" hint="optional">
+            <Field
+              label="name"
+              htmlFor="cf-name"
+              hint="optional"
+              order={1}
+              staged={staged}
+            >
               <input
                 id="cf-name"
                 ref={firstFieldRef}
@@ -194,16 +239,18 @@ function ContactCard() {
                 disabled={submitting}
                 autoComplete="name"
                 onChange={(e) =>
-                  setFields((f) => ({ ...f, name: e.target.value }))
+                  setFields((f0) => ({ ...f0, name: e.target.value }))
                 }
                 style={inputStyle}
               />
             </Field>
 
             <Field
-              label="Email"
+              label="email"
               htmlFor="cf-email"
               hint="required"
+              order={2}
+              staged={staged}
               invalid={status === "error" && !validity.email}
             >
               <input
@@ -217,20 +264,23 @@ function ContactCard() {
                 autoComplete="email"
                 aria-invalid={status === "error" && !validity.email}
                 onChange={(e) =>
-                  setFields((f) => ({ ...f, email: e.target.value }))
+                  setFields((f0) => ({ ...f0, email: e.target.value }))
                 }
                 style={inputStyle}
               />
             </Field>
 
             <Field
-              label="Message"
+              label="message"
               htmlFor="cf-message"
               hint={`${fields.message.trim().length}/${MSG_MAX}`}
+              order={3}
+              staged={staged}
               invalid={status === "error" && !validity.message}
             >
               <textarea
                 id="cf-message"
+                className="cf-rule"
                 value={fields.message}
                 maxLength={MSG_MAX}
                 required
@@ -238,9 +288,9 @@ function ContactCard() {
                 disabled={submitting}
                 aria-invalid={status === "error" && !validity.message}
                 onChange={(e) =>
-                  setFields((f) => ({ ...f, message: e.target.value }))
+                  setFields((f0) => ({ ...f0, message: e.target.value }))
                 }
-                style={{ ...inputStyle, resize: "vertical", minHeight: 84 }}
+                style={textareaStyle}
               />
             </Field>
 
@@ -250,18 +300,28 @@ function ContactCard() {
               </p>
             ) : null}
 
-            <div style={actionsStyle}>
+            <div
+              className="cf-row"
+              style={{ ...rowStyle(4, staged), ...actionsStyle }}
+            >
               <button
                 type="submit"
+                className="cf-stamp-btn"
                 disabled={submitting}
                 style={{
-                  ...submitButtonStyle,
+                  ...postmarkStyle,
                   opacity: submitting ? 0.6 : 1,
                   cursor: submitting ? "default" : "pointer",
                 }}
               >
                 {submitting ? "sending…" : "send"}
               </button>
+            </div>
+
+            <div
+              className="cf-row"
+              style={{ ...rowStyle(5, staged), ...footStyle }}
+            >
               <a
                 href={`mailto:${EMAIL}`}
                 style={mailtoStyle}
@@ -275,20 +335,66 @@ function ContactCard() {
       </div>
 
       <style>{`
+        .cf-row {
+          transition: opacity 260ms ease, transform 260ms ease;
+        }
+        .cf-rule {
+          background-image: repeating-linear-gradient(
+            to bottom,
+            transparent 0,
+            transparent 27px,
+            var(--line) 27px,
+            var(--line) 28px
+          );
+          background-attachment: local;
+        }
         #cf-name:focus-visible,
-        #cf-email:focus-visible,
+        #cf-email:focus-visible {
+          border-bottom-color: var(--oxblood);
+        }
         #cf-message:focus-visible {
-          border-color: var(--oxblood);
+          outline: 1px solid var(--oxblood);
+          outline-offset: 3px;
+        }
+        .cf-stamp-btn:focus-visible,
+        .cf-ghost:focus-visible,
+        .cf-mailto:focus-visible {
+          outline: 1px solid var(--oxblood);
+          outline-offset: 2px;
+        }
+        .cf-ghost:hover {
+          color: var(--ink);
+          border-bottom-color: var(--oxblood);
         }
         .cf-mailto:hover,
-        .cf-mailto:focus-visible { color: var(--oxblood); }
+        .cf-mailto:focus-visible {
+          color: var(--oxblood);
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .cf-row {
+            transition: none;
+          }
+        }
       `}</style>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Field wrapper
+// Row stagger — fields/lines fade + rise 60ms apart once the cloud has mostly
+// coalesced (f > 0.6); collapsing removes the delay so the reverse is crisp.
+// ---------------------------------------------------------------------------
+
+function rowStyle(order: number, staged: boolean): CSSProperties {
+  return {
+    opacity: staged ? 1 : 0,
+    transform: staged ? "none" : "translateY(6px)",
+    transitionDelay: staged ? `${order * 60}ms` : "0ms",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Field wrapper — mono superscript label + ruled underline control
 // ---------------------------------------------------------------------------
 
 function Field({
@@ -296,16 +402,23 @@ function Field({
   htmlFor,
   hint,
   invalid,
+  order,
+  staged,
   children,
 }: {
   label: string;
   htmlFor: string;
   hint?: string;
   invalid?: boolean;
+  order: number;
+  staged: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div style={{ marginBottom: 12 }}>
+    <div
+      className="cf-row"
+      style={{ ...rowStyle(order, staged), marginBottom: 18 }}
+    >
       <div style={fieldHeadStyle}>
         <label htmlFor={htmlFor} style={labelStyle}>
           {label}
@@ -327,7 +440,8 @@ function Field({
 }
 
 // ---------------------------------------------------------------------------
-// Styles (atlas: paper card, ink, oxblood, Spectral + mono, sharp, hairline)
+// Styles (atlas letter: no card box, ruled hairlines, ink/oxblood/sepia,
+// Spectral script + mono superscripts, sharp corners only)
 // ---------------------------------------------------------------------------
 
 const overlayStyle: CSSProperties = {
@@ -338,106 +452,131 @@ const overlayStyle: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   padding: "16px",
-  // The 3D envelope sits behind; let pointer events pass except over the card.
+  // The particle sheet sits behind; the overlay itself never eats events.
   pointerEvents: "none",
 };
 
-const cardStyle: CSSProperties = {
-  pointerEvents: "auto",
-  width: "min(420px, calc(100vw - 32px))",
-  maxHeight: "calc(100vh - 96px)",
+// The sheet — portrait, same aspect as the particle letter, transparent so the
+// faded dots remain visible through it. No border: the dots draw the edge.
+const sheetStyle: CSSProperties = {
+  position: "relative",
+  width: "min(420px, calc(100vw - 40px))",
+  aspectRatio: "0.72",
+  maxHeight: "calc(100vh - 120px)",
   overflowY: "auto",
-  background: "var(--paper-2)",
-  border: "1px solid var(--line)",
-  borderRadius: "2px",
-  padding: "20px 20px 18px",
-  boxShadow: "0 1px 0 rgba(26,23,20,0.06)",
+  background: "transparent",
+  border: "none",
+  borderRadius: 0,
+  padding: "26px 26px 20px",
+  display: "flex",
+  flexDirection: "column",
+};
+
+const headStyle: CSSProperties = {
+  // Clear the stamp square at top-right.
+  paddingRight: 64,
+  marginBottom: 18,
 };
 
 const titleStyle: CSSProperties = {
   fontFamily: DISPLAY,
   fontWeight: 600,
-  fontSize: "1.5rem",
+  fontSize: "1.4rem",
   lineHeight: 1.05,
   color: "var(--ink)",
-  margin: "0 0 4px",
+  margin: "0 0 6px",
 };
 
 const leadStyle: CSSProperties = {
   fontFamily: DISPLAY,
   fontWeight: 400,
-  fontSize: "0.92rem",
+  fontSize: "0.9rem",
   lineHeight: 1.45,
   color: "var(--ink-soft)",
-  margin: "0 0 16px",
+  margin: 0,
+};
+
+const formStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  flex: 1,
+  minHeight: 0,
 };
 
 const fieldHeadStyle: CSSProperties = {
   display: "flex",
   alignItems: "baseline",
   justifyContent: "space-between",
-  marginBottom: 4,
+  marginBottom: 2,
 };
 
+// Mono superscript label, raised small above the ruled line.
 const labelStyle: CSSProperties = {
-  fontFamily: DISPLAY,
-  fontWeight: 500,
-  fontSize: "0.86rem",
-  color: "var(--ink)",
+  fontFamily: MONO,
+  fontSize: "0.55rem",
+  letterSpacing: "0.08em",
+  textTransform: "lowercase",
+  color: "var(--sepia)",
 };
 
 const hintStyle: CSSProperties = {
   fontFamily: MONO,
-  fontSize: "0.58rem",
+  fontSize: "0.55rem",
   letterSpacing: "0.06em",
   textTransform: "lowercase",
 };
 
+// Ruled-underline field: Spectral text sitting on a single 1px hairline.
 const inputStyle: CSSProperties = {
   width: "100%",
-  background: "var(--paper)",
-  border: "1px solid var(--line)",
-  borderRadius: "2px",
-  padding: "8px 10px",
+  background: "transparent",
+  border: "none",
+  borderBottom: "1px solid var(--line)",
+  borderRadius: 0,
+  padding: "4px 0 6px",
   fontFamily: DISPLAY,
-  fontSize: "0.94rem",
+  fontSize: "0.97rem",
   lineHeight: 1.4,
   color: "var(--ink)",
   outline: "none",
   transition: "border-color 150ms linear",
 };
 
+// Message area — ruled lines under every written line (repeating hairline),
+// echoing the particle sheet's rules. No box.
+const textareaStyle: CSSProperties = {
+  ...inputStyle,
+  borderBottom: "none",
+  padding: 0,
+  lineHeight: "28px",
+  minHeight: 112,
+  resize: "vertical",
+};
+
 const actionsStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  flexWrap: "wrap",
-  gap: "12px",
-  marginTop: 6,
+  marginTop: 4,
 };
 
-const submitButtonStyle: CSSProperties = {
+// The postmark — oxblood stamp, sharp corners, slight cant.
+const postmarkStyle: CSSProperties = {
   background: "var(--oxblood)",
   color: "var(--paper)",
-  border: "1px solid var(--oxblood)",
-  borderRadius: "2px",
-  padding: "8px 18px",
-  fontFamily: MONO,
-  fontSize: "0.66rem",
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
-};
-
-const ghostButtonStyle: CSSProperties = {
-  background: "transparent",
-  color: "var(--ink-soft)",
-  border: "1px solid var(--line)",
-  borderRadius: "2px",
-  padding: "7px 14px",
+  border: "none",
+  borderRadius: 0,
+  padding: "9px 18px",
   fontFamily: MONO,
   fontSize: "0.62rem",
-  letterSpacing: "0.08em",
-  textTransform: "lowercase",
-  cursor: "pointer",
+  letterSpacing: "0.18em",
+  textTransform: "uppercase",
+  transform: "rotate(-2deg)",
+  transformOrigin: "center",
+};
+
+const footStyle: CSSProperties = {
+  marginTop: "auto",
+  paddingTop: 16,
 };
 
 const mailtoStyle: CSSProperties = {
@@ -477,6 +616,45 @@ const successBodyStyle: CSSProperties = {
   lineHeight: 1.45,
   color: "var(--ink-soft)",
   margin: "0 0 4px",
+};
+
+// "send another" — quiet mono text on a hairline underline (no box).
+const ghostButtonStyle: CSSProperties = {
+  background: "transparent",
+  color: "var(--ink-soft)",
+  border: "none",
+  borderBottom: "1px solid var(--line)",
+  borderRadius: 0,
+  padding: "2px 0 3px",
+  alignSelf: "flex-start",
+  fontFamily: MONO,
+  fontSize: "0.62rem",
+  letterSpacing: "0.08em",
+  textTransform: "lowercase",
+  cursor: "pointer",
+  transition: "color 150ms linear, border-color 150ms linear",
+};
+
+// Hairline stamp square, top-right — the DOM echo of the particle stamp.
+const stampStyle: CSSProperties = {
+  position: "absolute",
+  top: 22,
+  right: 26,
+  width: 44,
+  height: 44,
+  border: "1px solid var(--line)",
+  borderRadius: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+const stampTextStyle: CSSProperties = {
+  fontFamily: MONO,
+  fontSize: "0.55rem",
+  letterSpacing: "0.14em",
+  textTransform: "lowercase",
+  color: "var(--sepia)",
 };
 
 // Visually-hidden honeypot: off-screen, zero footprint, not display:none (some

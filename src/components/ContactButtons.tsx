@@ -6,15 +6,21 @@ import { GITHUB, LINKEDIN, EMAIL } from "@/data/content";
 
 /**
  * Three contact links rendered as engraving-style DOTTED GLYPHS — no text
- * labels, no EKG squiggle. Each glyph (GH / IN / @) is stipple-drawn on a tiny
- * canvas from a coarse dot grid so it matches the particle motif of the atlas:
- * dark ink dots on cream paper. Each mark is a real <a> (GitHub / LinkedIn /
- * mailto) with a sharp body, a hairline border, and a hover/focus that shifts
- * both the border and the stipple ink to --oxblood (color only — no lift,
- * scale, glow, or shadow).
+ * labels, no boxes. Each glyph (GH / IN / @) is stipple-drawn on a tiny canvas
+ * from a coarse dot grid so it matches the particle motif of the atlas: dark
+ * ink dots on cream paper. Each mark is a bare <a> (GitHub / LinkedIn /
+ * mailto) — borderless, transparent — whose only hover/focus affordance is a
+ * single hairline underline in --oxblood plus the stipple ink shifting to
+ * --oxblood (color only — no lift, scale, glow, or shadow).
+ *
+ * Variants:
+ *  • "default" — the centered intro row under the particle name.
+ *  • "inline"  — compact glyphs that sit inline after the tagline in the
+ *    expanded monogram line under the EKG bar (IntroBlock).
  */
 
 type Mark = "github" | "linkedin" | "mail";
+type Variant = "default" | "inline";
 
 interface Item {
   href: string;
@@ -76,16 +82,24 @@ const MASKS: Record<Mark, Mask> = {
   mail: MASK_AT,
 };
 
-const GLYPH_PX = 38; // css px square the stipple is drawn into
+/** css px square the stipple is drawn into, per variant. */
+const GLYPH_SIZE: Record<Variant, number> = {
+  default: 34,
+  inline: 20,
+};
 
 /**
  * Draws the mask as soft round ink dots. `ink` is a CSS color string. A subtle
  * per-cell radius/alpha jitter (seeded by cell index, deterministic) gives the
  * marks a hand-stippled, engraved feel rather than a printed bitmap.
  */
-function drawStipple(canvas: HTMLCanvasElement, mask: Mask, ink: string): void {
+function drawStipple(
+  canvas: HTMLCanvasElement,
+  mask: Mask,
+  ink: string,
+  size: number,
+): void {
   const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
-  const size = GLYPH_PX;
   canvas.width = Math.round(size * dpr);
   canvas.height = Math.round(size * dpr);
   const ctx = canvas.getContext("2d");
@@ -97,7 +111,7 @@ function drawStipple(canvas: HTMLCanvasElement, mask: Mask, ink: string): void {
   const cols = mask[0].length;
   const rows = mask.length;
   // Fit the grid with a little inset margin; keep the glyph centered.
-  const margin = size * 0.16;
+  const margin = size * 0.1;
   const usableW = size - margin * 2;
   const usableH = size - margin * 2;
   const cell = Math.min(usableW / cols, usableH / rows);
@@ -125,7 +139,7 @@ function drawStipple(canvas: HTMLCanvasElement, mask: Mask, ink: string): void {
   ctx.globalAlpha = 1;
 }
 
-function StippleGlyph({ mark }: { mark: Mark }): JSX.Element {
+function StippleGlyph({ mark, size }: { mark: Mark; size: number }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -148,16 +162,16 @@ function StippleGlyph({ mark }: { mark: Mark }): JSX.Element {
       const ink = readInk();
       if (ink !== lastInk) {
         lastInk = ink;
-        drawStipple(canvas, MASKS[mark], ink);
+        drawStipple(canvas, MASKS[mark], ink, size);
       }
       raf = requestAnimationFrame(tick);
     };
     // initial draw, then a cheap rAF that only repaints on a color change
-    drawStipple(canvas, MASKS[mark], readInk());
+    drawStipple(canvas, MASKS[mark], readInk(), size);
     lastInk = readInk();
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [mark]);
+  }, [mark, size]);
 
   return (
     <canvas
@@ -165,20 +179,28 @@ function StippleGlyph({ mark }: { mark: Mark }): JSX.Element {
       aria-hidden="true"
       style={{
         display: "block",
-        width: GLYPH_PX,
-        height: GLYPH_PX,
+        width: size,
+        height: size,
         imageRendering: "auto",
       }}
     />
   );
 }
 
-export default function ContactButtons(): JSX.Element {
+export default function ContactButtons({
+  variant = "default",
+}: {
+  variant?: Variant;
+}): JSX.Element {
+  const size = GLYPH_SIZE[variant];
   return (
     <nav
       aria-label="Contact"
-      className="contact-buttons flex items-stretch gap-2"
-      style={{ pointerEvents: "auto" }}
+      className={`contact-buttons contact-buttons--${variant} flex items-center`}
+      style={{
+        pointerEvents: "auto",
+        gap: variant === "inline" ? 10 : 18,
+      }}
     >
       {ITEMS.map((it) => (
         <a
@@ -194,29 +216,31 @@ export default function ContactButtons(): JSX.Element {
               // local color tokens the canvas reads via getComputedStyle
               ["--inkc" as string]: "#1a1714",
               ["--ox" as string]: "#7c1f1c",
-              border: "1px solid var(--line)",
-              borderRadius: "2px",
-              background: "color-mix(in srgb, var(--paper-2) 70%, transparent)",
-              padding: "6px",
+              background: "transparent",
+              border: "none",
+              // hairline underline lives here, transparent until hover/focus —
+              // constant 1px so nothing reflows on hover
+              borderBottom: "1px solid transparent",
+              padding: "2px 1px 4px",
               textDecoration: "none",
-              transition: "border-color 180ms linear, background-color 180ms linear",
+              transition: "border-color 180ms linear",
             } as React.CSSProperties
           }
         >
-          <StippleGlyph mark={it.mark} />
+          <StippleGlyph mark={it.mark} size={size} />
         </a>
       ))}
 
-      {/* hover/focus: border shifts to oxblood (the glyph ink shift is handled
-          in the canvas by reading :hover state — color only, no transform). */}
+      {/* hover/focus: a single hairline underline in oxblood (the glyph ink
+          shift is handled in the canvas by reading :hover state — color only,
+          no transform, no box). */}
       <style>{`
         .contact-btn:hover,
         .contact-btn:focus-visible {
-          border-color: color-mix(in srgb, var(--oxblood) 60%, transparent);
-          background: color-mix(in srgb, var(--paper-2) 90%, transparent);
+          border-bottom-color: var(--oxblood);
         }
         @media (max-width: 520px) {
-          .contact-buttons { flex-wrap: wrap; justify-content: center; }
+          .contact-buttons--default { flex-wrap: wrap; justify-content: center; }
         }
       `}</style>
     </nav>
