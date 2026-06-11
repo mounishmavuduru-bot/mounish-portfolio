@@ -7,8 +7,8 @@ import { ui, useScene } from "@/lib/sceneStore";
 import ContactButtons from "./ContactButtons";
 
 const MONO =
-  'var(--font-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace';
-const DISPLAY = "var(--font-display), Spectral, Georgia, serif";
+  'var(--font-mono), "Spline Sans Mono", ui-monospace, SFMono-Regular, monospace';
+const DISPLAY = "var(--font-display), Archivo, sans-serif";
 
 /** Height the EKG header bar reserves at the top; the monogram centers in it. */
 const BAR_H = 54;
@@ -17,9 +17,10 @@ const BAR_H = 54;
  * Intro DOM that frames the particle name (atlas styling — ink on cream, no
  * specimen label).
  *
- *  • At the intro state (index === 0): a centered serif tagline + the contact
- *    glyphs sit in the lower-center, directly under the particle "Mounish
- *    Mavuduru". The layer is pointer-events:none so it never eats the canvas
+ *  • At the intro state (index === 0): one TIGHT centered stack tucked under
+ *    the giant stacked particle name — single-line tagline, glyph row 12px
+ *    below, "scroll to dissect" hint 16px below that — anchored at bottom
+ *    ~7vh. The layer is pointer-events:none so it never eats the canvas
  *    drag; only the contact links re-enable pointer events.
  *
  *  • Once scrolled away (index > 0): the block collapses to ONLY the "M M"
@@ -69,7 +70,7 @@ export default function IntroBlock(): JSX.Element {
           aria-hidden={!atIntro}
           className="fixed inset-x-0 z-30 flex flex-col items-center"
           style={{
-            bottom: "clamp(40px, 11vh, 120px)",
+            bottom: "7vh",
             pointerEvents: "none",
             opacity: introOpacity,
             transform: `translateY(${(1 - introOpacity) * 10}px)`,
@@ -79,16 +80,18 @@ export default function IntroBlock(): JSX.Element {
           }}
         >
           <p
+            className="intro-tagline"
             style={{
               fontFamily: DISPLAY,
               fontWeight: 400,
-              fontSize: "clamp(0.92rem, 2.2vw, 1.12rem)",
+              fontSize: "clamp(0.85rem, 2vw, 1.05rem)",
               letterSpacing: "0.01em",
-              lineHeight: 1.5,
+              lineHeight: 1.35,
               color: "var(--ink-soft)",
               textAlign: "center",
-              margin: "0 0 18px",
-              maxWidth: "46ch",
+              margin: "0 0 12px",
+              whiteSpace: "nowrap",
+              maxWidth: "100%",
             }}
           >
             {TAGLINE}
@@ -102,7 +105,7 @@ export default function IntroBlock(): JSX.Element {
               letterSpacing: "0.26em",
               textTransform: "uppercase",
               color: "var(--sepia)",
-              margin: "22px 0 0",
+              margin: "16px 0 0",
               pointerEvents: "none",
             }}
           >
@@ -157,6 +160,7 @@ export default function IntroBlock(): JSX.Element {
               color: "var(--ink)",
               background: "transparent",
               border: "none",
+              borderRadius: "var(--radius-ctl, 8px)",
               padding: "6px 6px 6px 4px",
               cursor: "pointer",
               whiteSpace: "nowrap",
@@ -170,9 +174,13 @@ export default function IntroBlock(): JSX.Element {
       ) : null}
 
       {/* Hover affordance on the monogram/name: ink shifts to oxblood
-          (color only — no transform, no box). */}
+          (color only — no transform, no box). On the narrowest viewports the
+          single-line tagline is allowed to reflow so it never clips. */}
       <style>{`
         .mono-btn:hover { color: var(--oxblood); }
+        @media (max-width: 480px) {
+          .intro-tagline { white-space: normal; max-width: 34ch; }
+        }
       `}</style>
     </>
   );

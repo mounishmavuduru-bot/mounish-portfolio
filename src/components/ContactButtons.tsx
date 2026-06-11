@@ -233,11 +233,15 @@ export default function ContactButtons({
 
       {/* hover/focus: a single hairline underline in oxblood (the glyph ink
           shift is handled in the canvas by reading :hover state — color only,
-          no transform, no box). */}
+          no transform, no box). The keyboard focus ring is the one boxed
+          affordance here, so it follows the rounded-control radius. */}
       <style>{`
         .contact-btn:hover,
         .contact-btn:focus-visible {
           border-bottom-color: var(--oxblood);
+        }
+        .contact-btn:focus-visible {
+          border-radius: var(--radius-ctl, 8px);
         }
         @media (max-width: 520px) {
           .contact-buttons--default { flex-wrap: wrap; justify-content: center; }

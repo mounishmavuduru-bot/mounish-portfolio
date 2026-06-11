@@ -3,16 +3,12 @@
 /**
  * Chart — the medical CHART station, read as a single printed page.
  *
- * One paper-card panel in atlas styling. No tabs, no KPI cards — the chart is
- * ruled hairlines top to bottom:
+ * One paper-card panel in atlas styling. No tabs, no KPI cards:
  *
  *   • VITALS  — one mono line, "pulse N · rate NN · rhythm sinus", with
  *               oxblood numerals; the live global pulse count is read from
- *               /api/pulse when the panel opens.
- *   • LOGBOOK — recent visitor signatures as ruled ledger lines
- *               ("— msg · time-ago") with the sign field inline as the last
- *               line; signing POSTs to /api/pulse and refreshes the shared
- *               count via sceneActions.setPulses.
+ *               /api/pulse when the panel opens. The count is a bare number —
+ *               the logbook is gone, no visitor text is fetched or shown.
  *   • ORDERS  — a command line at the bottom routed to /api/console. The
  *               route returns { lines, ekg? }; when an ekg effect comes back
  *               (the easter eggs — "code blue", "defib", "tachy", …) we
@@ -22,11 +18,12 @@
  * from anywhere. Escape closes. Stateless except the pulse round-trips.
  *
  * The panel is content-sized (maxHeight-bounded, no filler middle); only the
- * logbook ledger scrolls internally, and only when it actually overflows.
+ * orders scrollback scrolls internally.
  *
  * Atlas language only: paper card (--paper-2), --line hairlines, --ink text,
- * Spectral entries, IBM Plex Mono meta, --oxblood accents. Sharp corners
- * (small controls ≤2px), no green, no glass/backdrop-blur, no glow, no emoji.
+ * Spectral entries, IBM Plex Mono meta, --oxblood accents. Rounded corners
+ * via the global tokens (--radius-card panels, --radius-ctl controls), no
+ * green, no glass/backdrop-blur, no glow, no emoji.
  */
 
 import {
@@ -46,8 +43,8 @@ import {
 } from "@/lib/sceneStore";
 
 const MONO =
-  'var(--font-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace';
-const DISPLAY = "var(--font-display), Spectral, Georgia, serif";
+  'var(--font-mono), "Spline Sans Mono", ui-monospace, SFMono-Regular, monospace';
+const DISPLAY = "var(--font-display), Archivo, sans-serif";
 
 const CLEAR_SENTINEL = "::clear::";
 
@@ -72,7 +69,8 @@ const ORDERS_BANNER: Omit<OrderLine, "id">[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Pulse refresh — shared by the panel open and the orders sign command.
+// Pulse refresh — the live count read when the panel opens. The logbook is
+// closed: `recent` is always empty and no visitor text is ever rendered.
 // ---------------------------------------------------------------------------
 
 async function fetchPulses(): Promise<PulseState | null> {
@@ -83,7 +81,7 @@ async function fetchPulses(): Promise<PulseState | null> {
     if (!data || typeof data.count !== "number") return null;
     const state: PulseState = {
       count: data.count,
-      recent: Array.isArray(data.recent) ? data.recent : [],
+      recent: [],
       persisted: Boolean(data.persisted),
     };
     sceneActions.setPulses(state);
@@ -186,7 +184,7 @@ function ClipMark() {
 }
 
 // ===========================================================================
-// Panel — one printed-chart view: vitals line, logbook ledger, orders.
+// Panel — one printed-chart view: vitals line + orders.
 // ===========================================================================
 
 function ChartPanel({ onClose }: { onClose: () => void }) {
@@ -235,8 +233,6 @@ function ChartPanel({ onClose }: { onClose: () => void }) {
           <span style={vitalNumStyle}>{loading ? "··" : String(bpm)}</span>
           {" · "}rhythm sinus
         </p>
-
-        <Logbook />
       </div>
 
       {/* orders input — always present, the running command line */}
@@ -248,140 +244,6 @@ function ChartPanel({ onClose }: { onClose: () => void }) {
       `}</style>
     </section>
   );
-}
-
-// ===========================================================================
-// Logbook — ruled ledger lines + the sign field inline as the last line.
-// ===========================================================================
-
-function Logbook() {
-  const pulses = useScene((s) => s.pulses);
-  const [value, setValue] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-  const [signed, setSigned] = useState(false);
-
-  const onSubmit = useCallback(
-    async (e: FormEvent) => {
-      e.preventDefault();
-      const msg = value.trim();
-      if (!msg || submitting) return;
-      setSubmitting(true);
-      setError("");
-      try {
-        const res = await fetch("/api/pulse", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ msg }),
-        });
-        if (!res.ok) {
-          setError("could not sign the logbook. please try again.");
-        } else {
-          const data = (await res.json()) as PulseState;
-          if (data && typeof data.count === "number") {
-            sceneActions.setPulses({
-              count: data.count,
-              recent: Array.isArray(data.recent) ? data.recent : [],
-              persisted: Boolean(data.persisted),
-            });
-          }
-          setValue("");
-          setSigned(true);
-        }
-      } catch {
-        setError("could not reach the logbook. please try again.");
-      } finally {
-        setSubmitting(false);
-      }
-    },
-    [value, submitting],
-  );
-
-  return (
-    <div style={logbookStyle}>
-      <h3 style={logLabelStyle}>logbook</h3>
-
-      {pulses.recent.length === 0 ? (
-        <p style={emptyStyle}>No signatures yet. Be the first to sign in.</p>
-      ) : (
-        <ul style={ledgerStyle}>
-          {pulses.recent.map((r, i) => (
-            <li key={`${r.ts}-${i}`} style={ledgerLineStyle}>
-              <span style={ledgerMsgStyle}>— {r.msg}</span>
-              <span style={ledgerAgoStyle}>· {formatAgo(r.ts)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <form onSubmit={onSubmit} style={signFormStyle}>
-        <span aria-hidden style={signDashStyle}>
-          —
-        </span>
-        <input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          disabled={submitting}
-          maxLength={80}
-          spellCheck={false}
-          autoComplete="off"
-          aria-label="sign the logbook"
-          placeholder="sign the logbook…"
-          style={signInputStyle}
-          className="chart-sign-input"
-        />
-        <button
-          type="submit"
-          disabled={submitting || !value.trim()}
-          className="chart-sign-btn"
-          style={{
-            ...signButtonStyle,
-            opacity: submitting || !value.trim() ? 0.55 : 1,
-            cursor: submitting || !value.trim() ? "default" : "pointer",
-          }}
-        >
-          {submitting ? "…" : "sign"}
-        </button>
-      </form>
-
-      {error ? (
-        <p role="alert" style={signErrorStyle}>
-          {error}
-        </p>
-      ) : null}
-      {signed && !error ? (
-        <p role="status" style={signOkStyle}>
-          Signed — your beat is on the strip.
-        </p>
-      ) : null}
-
-      <style>{`
-        .chart-sign-input:focus-visible { border-bottom-color: var(--oxblood); }
-        .chart-sign-btn:hover:enabled,
-        .chart-sign-btn:focus-visible { color: var(--oxblood); }
-      `}</style>
-    </div>
-  );
-}
-
-/** Relative "time-ago" for ledger lines; falls back to a short date. */
-function formatAgo(ts: number): string {
-  if (!Number.isFinite(ts) || ts <= 0) return "";
-  const diff = Date.now() - ts;
-  if (diff < 60_000) return "just now";
-  const m = Math.floor(diff / 60_000);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 14) return `${d}d ago`;
-  try {
-    return new Date(ts)
-      .toLocaleDateString(undefined, { month: "short", day: "numeric" })
-      .toLowerCase();
-  } catch {
-    return "";
-  }
 }
 
 // ===========================================================================
@@ -442,12 +304,6 @@ function OrdersBar() {
           if (data.ekg) {
             emitEkg(data.ekg);
           }
-
-          // pulse-mutating verbs refresh the shared count.
-          const verb = cmd.split(/\s+/)[0]?.toLowerCase();
-          if (verb === "sign" || verb === "leave") {
-            void fetchPulses();
-          }
         }
       } catch {
         append([{ kind: "err", text: "error: could not reach the chart." }]);
@@ -506,7 +362,7 @@ function OrdersBar() {
 }
 
 // ===========================================================================
-// Styles (atlas: paper card, ink, oxblood, Spectral + mono, sharp, hairline)
+// Styles (atlas: paper card, ink, oxblood, Archivo + mono, rounded, hairline)
 // ===========================================================================
 
 const launcherStyle: CSSProperties = {
@@ -521,7 +377,7 @@ const launcherStyle: CSSProperties = {
   background: "var(--paper-2)",
   color: "var(--ink)",
   border: "1px solid var(--line)",
-  borderRadius: 2,
+  borderRadius: "var(--radius-ctl)",
   font: `500 10px/1 ${MONO}`,
   textTransform: "uppercase",
   cursor: "pointer",
@@ -540,7 +396,9 @@ const panelStyle: CSSProperties = {
   flexDirection: "column",
   background: "var(--paper-2)",
   border: "1px solid var(--line)",
-  borderRadius: 2,
+  borderRadius: "var(--radius-card)",
+  // Clip the orders strip's paper fill to the rounded card corners.
+  overflow: "hidden",
   boxShadow: "0 1px 0 rgba(26,23,20,0.06)",
 };
 
@@ -564,7 +422,7 @@ const chartTitleStyle: CSSProperties = {
 const closeButtonStyle: CSSProperties = {
   background: "transparent",
   border: "1px solid var(--line)",
-  borderRadius: 2,
+  borderRadius: "var(--radius-ctl)",
   color: "var(--ink-soft)",
   font: `500 9px/1 ${MONO}`,
   letterSpacing: "0.1em",
@@ -575,8 +433,7 @@ const closeButtonStyle: CSSProperties = {
 };
 
 const bodyStyle: CSSProperties = {
-  // Does not grow — the panel fits its content. minHeight 0 lets the ledger
-  // list (the only internal scroller) shrink when the maxHeight bound bites.
+  // Does not grow — the panel fits its content (just the vitals line now).
   flex: "0 1 auto",
   minHeight: 0,
   display: "flex",
@@ -594,145 +451,13 @@ const vitalsLineStyle: CSSProperties = {
   lineHeight: 1.4,
   color: "var(--ink-soft)",
   margin: 0,
-  padding: "0 0 14px",
-  borderBottom: "1px solid var(--line)",
+  // No bottom rule: the orders strip's hairline top border is the next rule.
+  padding: 0,
 };
 
 const vitalNumStyle: CSSProperties = {
   color: "var(--oxblood)",
   fontWeight: 600,
-};
-
-// --- logbook ledger ----------------------------------------------------------
-
-const logbookStyle: CSSProperties = {
-  // Flex column so only the ledger list scrolls when the panel is bounded.
-  display: "flex",
-  flexDirection: "column",
-  minHeight: 0,
-  flex: "0 1 auto",
-};
-
-const logLabelStyle: CSSProperties = {
-  flex: "0 0 auto",
-  fontFamily: MONO,
-  fontSize: "0.56rem",
-  letterSpacing: "0.14em",
-  textTransform: "uppercase",
-  color: "var(--sepia)",
-  fontWeight: 500,
-  margin: "14px 0 4px",
-};
-
-const emptyStyle: CSSProperties = {
-  flex: "0 0 auto",
-  fontFamily: DISPLAY,
-  fontSize: "0.88rem",
-  color: "var(--ink-soft)",
-  margin: "6px 0 0",
-  padding: "0 0 8px",
-  borderBottom: "1px solid var(--line)",
-};
-
-const ledgerStyle: CSSProperties = {
-  listStyle: "none",
-  margin: 0,
-  padding: 0,
-  display: "flex",
-  flexDirection: "column",
-  // Scrolls internally only when the signatures actually overflow the bound.
-  flex: "0 1 auto",
-  minHeight: 0,
-  overflowY: "auto",
-};
-
-const ledgerLineStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "baseline",
-  justifyContent: "space-between",
-  gap: 10,
-  padding: "7px 0",
-  borderBottom: "1px solid var(--line)",
-};
-
-const ledgerMsgStyle: CSSProperties = {
-  fontFamily: DISPLAY,
-  fontSize: "0.9rem",
-  lineHeight: 1.35,
-  color: "var(--ink)",
-  wordBreak: "break-word",
-  minWidth: 0,
-};
-
-const ledgerAgoStyle: CSSProperties = {
-  fontFamily: MONO,
-  fontSize: "0.56rem",
-  letterSpacing: "0.06em",
-  color: "var(--sepia)",
-  flex: "0 0 auto",
-};
-
-// --- inline sign line ---------------------------------------------------------
-
-const signFormStyle: CSSProperties = {
-  flex: "0 0 auto",
-  display: "flex",
-  alignItems: "baseline",
-  gap: 8,
-  padding: "8px 0 0",
-};
-
-const signDashStyle: CSSProperties = {
-  fontFamily: DISPLAY,
-  fontSize: "0.9rem",
-  color: "var(--sepia)",
-  flex: "0 0 auto",
-};
-
-const signInputStyle: CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-  background: "transparent",
-  border: "none",
-  borderBottom: "1px solid var(--line)",
-  borderRadius: 0,
-  padding: "0 0 5px",
-  fontFamily: DISPLAY,
-  fontSize: "0.9rem",
-  color: "var(--ink)",
-  outline: "none",
-  transition: "border-color 150ms linear",
-};
-
-const signButtonStyle: CSSProperties = {
-  background: "transparent",
-  border: "none",
-  borderRadius: 0,
-  padding: "0 2px 5px",
-  fontFamily: MONO,
-  fontSize: "0.6rem",
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
-  color: "var(--ink-soft)",
-  transition: "color 150ms linear, opacity 150ms linear",
-};
-
-const signErrorStyle: CSSProperties = {
-  flex: "0 0 auto",
-  fontFamily: MONO,
-  fontSize: "0.62rem",
-  lineHeight: 1.4,
-  color: "var(--oxblood)",
-  margin: "8px 0 0",
-};
-
-const signOkStyle: CSSProperties = {
-  flex: "0 0 auto",
-  fontFamily: MONO,
-  fontSize: "0.62rem",
-  lineHeight: 1.4,
-  color: "var(--ink-soft)",
-  margin: "8px 0 0",
 };
 
 // --- orders -------------------------------------------------------------------

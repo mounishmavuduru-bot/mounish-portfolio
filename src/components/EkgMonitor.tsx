@@ -45,7 +45,7 @@ const SPEED = 150; // css px/sec, trace scrolls right → left
 const INK = "#1a1714";
 const CALIPER_INK = "rgba(26, 23, 20, 0.55)";
 const MONO =
-  'var(--font-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace';
+  'var(--font-mono), "Spline Sans Mono", ui-monospace, SFMono-Regular, monospace';
 
 const HR_BASE = 64; // resting bpm
 const HR_MAX = 92; // excited bpm under a fast cursor

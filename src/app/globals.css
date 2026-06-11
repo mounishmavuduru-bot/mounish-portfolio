@@ -4,8 +4,8 @@
    ANATOMICAL ATLAS — light theme. 1800s Gray's-Anatomy engraving plate:
    warm cream paper ground, dark ink stipple, a single oxblood accent, muted
    sepia meta, hairline rules. No neon, no green/cyan, no dark ground, no glass.
-   next/font sets --font-display (Spectral, old-style serif) and --font-mono
-   (IBM Plex Mono) on <html>; both are consumed below.
+   next/font sets --font-display (Archivo, grotesque sans) and --font-mono
+   (Spline Sans Mono) on <html>; both are consumed below.
    =========================================================================== */
 
 :root {
@@ -18,6 +18,9 @@
   --oxblood: #7c1f1c; /* the single accent */
   --sepia: #8a7a5c; /* muted meta / hairline-ish */
   --line: rgba(26, 23, 20, 0.16); /* hairlines */
+  /* Rounded-rectangle tokens — every rectangle on the site is rounded. */
+  --radius-card: 14px; /* panels, tiles, forms, the chart */
+  --radius-ctl: 8px; /* buttons, inputs, small controls */
 }
 
 @theme inline {
@@ -29,7 +32,7 @@
   --color-ink-soft: var(--ink-soft);
   --color-oxblood: var(--oxblood);
   --color-sepia: var(--sepia);
-  --font-display: var(--font-display), Spectral, Georgia, serif;
+  --font-display: var(--font-display), Archivo, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -57,17 +60,17 @@ body {
   background-attachment: fixed;
   color: var(--ink);
   /* Body text is the old-style serif; tiny labels/meta opt into mono. */
-  font-family: var(--font-display), Spectral, Georgia, serif;
+  font-family: var(--font-display), Archivo, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
 /* Explicit serif display helper (headings, the 3D name DOM mirror, etc.). */
 .font-display {
-  font-family: var(--font-display), Spectral, Georgia, serif;
+  font-family: var(--font-display), Archivo, sans-serif;
 }
 
-/* Tiny labels and meta use IBM Plex Mono. */
+/* Tiny labels and meta use Spline Sans Mono. */
 .font-mono {
   font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }

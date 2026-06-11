@@ -12,7 +12,7 @@ import {
   ORGAN_WORLD,
   loadOrganCloud,
 } from "@/lib/organData";
-import { buildNameCloud, buildLetterCloud } from "@/lib/nameCloud";
+import { buildStackedNameCloud, buildLetterCloud } from "@/lib/nameCloud";
 import { ParticleSim, type PointerState } from "@/lib/particleSim";
 import { STATES, useScene, sceneActions, pointer } from "@/lib/sceneStore";
 import { TAGLINE } from "@/data/content";
@@ -26,16 +26,38 @@ import { TAGLINE } from "@/data/content";
 // ---------------------------------------------------------------------------
 
 // Camera. fov 42; distance frames a height-ORGAN_WORLD organ at ~120% (so the
-// organ overflows the edges and feels immersive). The name + letter clouds are
-// built at modest world heights, so they occupy the middle of the frame and
-// read fully — centered, not clipped — with auto-rotation OFF at those states.
+// organ overflows the edges and feels immersive). The letter cloud is built at
+// a modest world height so it reads fully centered; the intro name is the
+// opposite — a full-bleed stacked block sized from the visible world width
+// below — with auto-rotation OFF at both flat-plate states.
 const FOV = 42;
 const FIT_DISTANCE = (ORGAN_WORLD * 0.5) / Math.tan(((FOV / 2) * Math.PI) / 180);
 const CAMERA_Z = FIT_DISTANCE * 0.82; // ~120% overflow for the organ
 
-const NAME_TEXT = "Mounish Mavuduru";
-const NAME_WORLD_HEIGHT = 3.0;
+// Intro name: TWO STACKED LINES scaled so the text spans nearly the full
+// viewport width at the organ plane (z=0). The visible world height there is
+//   2 * CAMERA_Z * tan(FOV/2)  =  0.82 * ORGAN_WORLD  ≈ 7.38
+// (CAMERA_Z cancels the FIT_DISTANCE tangent), and the visible world WIDTH is
+// that height × the viewport aspect. We target 94% of it; the height cap
+// (≈78% of the visible height) makes width yield on tall/narrow viewports —
+// buildStackedNameCloud applies the cap internally so the block never
+// overflows vertically. Frustum check: the ±Z slab (0.22 × line height ≈ 0.5
+// world units at full bleed) keeps near-edge points inside the view, since
+// 0.94 allows ≈ 0.06 × CAMERA_Z ≈ 0.58 of forward depth before edge clipping.
+const VISIBLE_WORLD_H = 2 * CAMERA_Z * Math.tan(((FOV / 2) * Math.PI) / 180);
+const NAME_LINES = ["Mounish", "Mavuduru"];
+const NAME_WIDTH_FRAC = 0.94;
+const NAME_MAX_WORLD_HEIGHT = 0.78 * VISIBLE_WORLD_H;
 const LETTER_WORLD_HEIGHT = 3.4;
+
+/** Target world width for the stacked name at the current viewport aspect. */
+function nameWorldWidth(): number {
+  if (typeof window === "undefined") {
+    return NAME_WIDTH_FRAC * VISIBLE_WORLD_H * (16 / 9);
+  }
+  const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+  return NAME_WIDTH_FRAC * VISIBLE_WORLD_H * aspect;
+}
 
 // atlas tokens (mirrors globals @theme; used for DOM overlays only). No PAPER
 // fill here anymore: the wrapper + GL canvas stay transparent so the matte
@@ -624,7 +646,12 @@ export default function Specimen() {
     // Build the name cloud after fonts settle so glyph metrics are final.
     const fontsReady = document.fonts?.ready ?? Promise.resolve();
     const nameReady: Promise<Float32Array> = fontsReady.then(() =>
-      buildNameCloud(NAME_TEXT, count, NAME_WORLD_HEIGHT),
+      buildStackedNameCloud(
+        NAME_LINES,
+        count,
+        nameWorldWidth(),
+        NAME_MAX_WORLD_HEIGHT,
+      ),
     );
     const letterReady: Promise<Float32Array> = fontsReady.then(() =>
       buildLetterCloud(count, LETTER_WORLD_HEIGHT),
@@ -661,9 +688,11 @@ export default function Specimen() {
   }, [attempt]);
 
   // Rebuild the runtime clouds (name + letter) on resize; organs are
-  // scale-independent. Keep the same Float32Array identity by mutating
-  // clouds[0] / clouds[LAST] in place so the frame loop's `a === b` fast-path
-  // and morph stay valid.
+  // scale-independent. The stacked name is width-driven (94% of the visible
+  // world width at the new viewport aspect, height-capped), so resize MUST
+  // rebuild it. Keep the same Float32Array identity by mutating clouds[0] /
+  // clouds[LAST] in place so the frame loop's `a === b` fast-path and morph
+  // stay valid.
   useEffect(() => {
     if (status !== "ready" || !clouds) return;
     let raf = 0;
@@ -672,7 +701,14 @@ export default function Specimen() {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         const count = clouds[0].length / 3;
-        clouds[0].set(buildNameCloud(NAME_TEXT, count, NAME_WORLD_HEIGHT));
+        clouds[0].set(
+          buildStackedNameCloud(
+            NAME_LINES,
+            count,
+            nameWorldWidth(),
+            NAME_MAX_WORLD_HEIGHT,
+          ),
+        );
         clouds[last].set(buildLetterCloud(count, LETTER_WORLD_HEIGHT));
       });
     };
@@ -893,7 +929,7 @@ export default function Specimen() {
                 style={{
                   border: "none",
                   padding: "4px 0",
-                  borderRadius: 0,
+                  borderRadius: "var(--radius-ctl, 8px)",
                   outlineColor: OXBLOOD,
                 }}
               >
@@ -928,7 +964,7 @@ export default function Specimen() {
           <p
             style={{
               fontFamily:
-                'var(--font-mono), "IBM Plex Mono", ui-monospace, Menlo, monospace',
+                'var(--font-mono), "Spline Sans Mono", ui-monospace, Menlo, monospace',
               fontSize: "0.78rem",
               letterSpacing: "0.06em",
               color: "rgba(26, 23, 20, 0.6)",
@@ -944,7 +980,7 @@ export default function Specimen() {
           <p
             style={{
               fontFamily:
-                'var(--font-mono), "IBM Plex Mono", ui-monospace, Menlo, monospace',
+                'var(--font-mono), "Spline Sans Mono", ui-monospace, Menlo, monospace',
               fontSize: "0.78rem",
               letterSpacing: "0.06em",
               color: "rgba(26, 23, 20, 0.6)",
@@ -959,13 +995,13 @@ export default function Specimen() {
             className="cursor-pointer"
             style={{
               fontFamily:
-                'var(--font-mono), "IBM Plex Mono", ui-monospace, Menlo, monospace',
+                'var(--font-mono), "Spline Sans Mono", ui-monospace, Menlo, monospace',
               fontSize: "0.72rem",
               letterSpacing: "0.08em",
               padding: "0.45rem 1.1rem",
               background: "transparent",
               border: `1px solid ${OXBLOOD}`,
-              borderRadius: 2,
+              borderRadius: "var(--radius-ctl, 8px)",
               color: OXBLOOD,
               outlineColor: OXBLOOD,
             }}

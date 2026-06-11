@@ -1,20 +1,19 @@
 import type { Metadata } from "next";
-import { Spectral, IBM_Plex_Mono } from "next/font/google";
+import { Archivo, Spline_Sans_Mono } from "next/font/google";
 import "./globals.css";
 
-// Display + body face: Spectral, an old-style serif in the spirit of an 1800s
-// anatomy plate. Spectral ships as static weights, so we request the range the
-// atlas uses (300–600) plus italics for emphasis.
-const spectral = Spectral({
+// Display + body face: Archivo, a heavy characterful grotesque — modern
+// clinic × specimen lab. Variable font; we request the weights the site uses
+// (regular body through the heavy display cuts for the full-bleed name).
+const archivo = Archivo({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
-  style: ["normal", "italic"],
+  weight: ["400", "500", "600", "700", "800"],
   display: "swap",
 });
 
 // Tiny labels / meta / chart readouts.
-const plexMono = IBM_Plex_Mono({
+const splineMono = Spline_Sans_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
   weight: ["400", "500"],
@@ -49,7 +48,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${plexMono.variable} ${spectral.variable} h-full`}
+      className={`${splineMono.variable} ${archivo.variable} h-full`}
     >
       {/* No flat bg utility here — globals.css paints the matte cream gradient
           ground on html/body; every fixed layer above stays transparent. */}

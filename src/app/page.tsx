@@ -19,13 +19,18 @@ const Specimen = dynamic(() => import("@/components/Specimen"), {
 });
 
 export default function Home() {
-  // Seed the global pulse counter once on mount. Tolerate failure: the store
-  // keeps its initial empty state and the UI degrades gracefully.
+  // Record this visit's pulse once on mount: a bare POST that only INCRs the
+  // global counter (no body — the logbook is closed) and returns the refreshed
+  // state, which seeds the store. Tolerate failure: the store keeps its
+  // initial empty state and the UI degrades gracefully.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/pulse", { cache: "no-store" });
+        const res = await fetch("/api/pulse", {
+          method: "POST",
+          cache: "no-store",
+        });
         if (!res.ok) return;
         const data = (await res.json()) as PulseState;
         if (!cancelled && data && typeof data.count === "number") {

@@ -8,8 +8,8 @@
  * letter that condenses out of them. No outer card box — the form IS the sheet
  * area: a centred portrait region matching the particle sheet's aspect, with
  * Spectral text on ruled 1px underlines (no boxed inputs), small mono
- * superscript labels, and a quiet mono send control on a hairline underline
- * anchoring the sheet's foot.
+ * superscript labels, and a quiet mono send postmark (a rounded hairline box,
+ * --radius-ctl) anchoring the sheet's foot.
  *
  * Coalesce: f = clamp(progress - 3, 0, 1) from the scene store. The sheet's
  * opacity is smoothstep(0.55→0.95 of f) and it scales 0.985→1, scrubbed
@@ -34,8 +34,8 @@ import {
 import { useScene } from "@/lib/sceneStore";
 
 const MONO =
-  'var(--font-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace';
-const DISPLAY = "var(--font-display), Spectral, Georgia, serif";
+  'var(--font-mono), "Spline Sans Mono", ui-monospace, SFMono-Regular, monospace';
+const DISPLAY = "var(--font-display), Archivo, sans-serif";
 
 const NAME_MAX = 80;
 const MSG_MAX = 1000;
@@ -341,7 +341,10 @@ function LetterSheet() {
           outline: 1px solid var(--oxblood);
           outline-offset: 2px;
         }
-        .cf-send-btn:hover,
+        .cf-send-btn:hover {
+          color: var(--oxblood);
+          border-color: var(--oxblood);
+        }
         .cf-ghost:hover {
           color: var(--ink);
           border-bottom-color: var(--oxblood);
@@ -417,7 +420,8 @@ function Field({
 
 // ---------------------------------------------------------------------------
 // Styles (atlas letter: no card box, ruled hairlines, ink/oxblood/sepia,
-// Spectral script + mono superscripts, sharp corners only)
+// Spectral script + mono superscripts; the boxed send postmark is rounded
+// with --radius-ctl, the ruled-underline fields have no boxes to round)
 // ---------------------------------------------------------------------------
 
 const overlayStyle: CSSProperties = {
@@ -442,7 +446,6 @@ const sheetStyle: CSSProperties = {
   overflowY: "auto",
   background: "transparent",
   border: "none",
-  borderRadius: 0,
   padding: "26px 26px 20px",
   display: "flex",
   flexDirection: "column",
@@ -535,15 +538,14 @@ const actionsStyle: CSSProperties = {
   paddingTop: 16,
 };
 
-// The send control — quiet atlas style: mono uppercase on a hairline
-// underline, matching the ghost button. No block fill, no rotation.
+// The send control — a quiet postmark stamp: mono uppercase inside a rounded
+// hairline box (--radius-ctl). No block fill, no rotation.
 const sendButtonStyle: CSSProperties = {
   background: "transparent",
   color: "var(--ink-soft)",
-  border: "none",
-  borderBottom: "1px solid var(--line)",
-  borderRadius: 0,
-  padding: "2px 0 3px",
+  border: "1px solid var(--line)",
+  borderRadius: "var(--radius-ctl)",
+  padding: "7px 16px",
   fontFamily: MONO,
   fontSize: "0.62rem",
   letterSpacing: "0.18em",

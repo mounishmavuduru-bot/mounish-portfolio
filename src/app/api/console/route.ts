@@ -4,12 +4,13 @@
  *   POST { cmd }   → { lines: string[], ekg?: EkgEvent }
  *   GET  ?cmd=...  → { lines: string[], ekg?: EkgEvent }  (convenience)
  *
- * Stateless except for the `pulse` / `sign` (alias `leave`) commands, which
- * read/write the persistent pulse store. Everything else is built from
- * content.ts. The optional `ekg` field is a fire-and-forget EKG effect the
- * client forwards to emitEkg() so an order can jolt the rhythm strip — the
- * easter eggs ("code blue", "defib", "tachy", …) live here. Unknown commands
- * return a helpful line. No env/secrets are ever exposed.
+ * Stateless except for the `pulse` command, which reads the persistent pulse
+ * counter (count only — the logbook is closed, no visitor text is read or
+ * written). Everything else is built from content.ts. The optional `ekg`
+ * field is a fire-and-forget EKG effect the client forwards to emitEkg() so
+ * an order can jolt the rhythm strip — the easter eggs ("code blue", "defib",
+ * "tachy", …) live here. Unknown commands return a helpful line. No
+ * env/secrets are ever exposed.
  */
 
 import {
@@ -21,7 +22,7 @@ import {
   awards,
   positions,
 } from "@/data/content";
-import { getPulses, addPulse } from "@/lib/pulseStore";
+import { getPulses } from "@/lib/pulseStore";
 import type { EkgEvent } from "@/lib/sceneStore";
 
 export const runtime = "nodejs";
@@ -45,7 +46,6 @@ const HELP_LINES: string[] = [
   "  positions     roles held",
   "  contact       github, linkedin, email",
   "  pulse         live global pulse count",
-  "  sign <msg>    sign the logbook (adds a pulse)",
   "  auscultate    listen to the current specimen",
   "  order <x>     place a standing order",
   "  clear         clear the chart notes",
@@ -106,26 +106,9 @@ function auscultateLines(): string[] {
 }
 
 async function pulseLines(): Promise<string[]> {
+  // Count readout only — the logbook is closed; no signature text is shown.
   const state = await getPulses();
-  const lines = [
-    `pulse count: ${state.count}`,
-    state.persisted ? "store: persistent" : "store: in-memory (not persisted)",
-  ];
-  if (state.recent.length) {
-    lines.push("recent signatures:");
-    for (const r of state.recent) lines.push(`  ${r.msg}`);
-  }
-  return lines;
-}
-
-async function signLines(message: string): Promise<string[]> {
-  const msg = message.trim();
-  if (!msg) {
-    return ["usage: sign <message>"];
-  }
-  const state = await addPulse(msg);
   return [
-    "signed the logbook.",
     `pulse count: ${state.count}`,
     state.persisted ? "store: persistent" : "store: in-memory (not persisted)",
   ];
@@ -219,10 +202,10 @@ async function run(rawCmd: string): Promise<CmdResult> {
       return { lines: contactLines() };
     case "pulse":
       return { lines: await pulseLines() };
-    // `sign` is the chart-era verb; keep `leave` as a back-compat alias.
+    // The logbook era is over; the old verbs get a graceful goodbye.
     case "sign":
     case "leave":
-      return { lines: await signLines(rest) };
+      return { lines: ["the logbook is closed."] };
     case "auscultate":
     case "auscultation":
       return { lines: auscultateLines() };

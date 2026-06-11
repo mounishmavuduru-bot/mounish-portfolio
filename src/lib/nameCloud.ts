@@ -16,7 +16,7 @@
  * on resize if the world scale changes.
  */
 
-const FALLBACK_FONTS = "'Spectral', Georgia, 'Times New Roman', serif";
+const FALLBACK_FONTS = "'Archivo', Helvetica, Arial, sans-serif";
 
 /** Build a centered count×3 grid roughly worldHeight tall — used as fallback. */
 function fallbackGrid(count: number, worldHeight: number): Float32Array {
@@ -37,6 +37,202 @@ function fallbackGrid(count: number, worldHeight: number): Float32Array {
     out[i * 3 + 1] = (0.5 - v) * h;
     out[i * 3 + 2] = (Math.random() * 2 - 1) * depth;
   }
+  return out;
+}
+
+/**
+ * Width-driven fallback grid for the stacked name: a centered rectangle whose
+ * WIDTH is `worldWidth` with the stacked-block aspect (~2.4 w/h), tiled into
+ * exactly `count` points.
+ */
+function fallbackGridWide(count: number, worldWidth: number): Float32Array {
+  const out = new Float32Array(count * 3);
+  const aspect = 2.4; // two stacked name lines, width / height
+  const w = worldWidth;
+  const h = w / aspect;
+  const rows = Math.max(1, Math.round(Math.sqrt(count / aspect)));
+  const cols = Math.max(1, Math.ceil(count / rows));
+  const depth = 0.11 * h; // ≈ 0.22 of a single line's height
+  for (let i = 0; i < count; i++) {
+    const r = Math.floor(i / cols);
+    const c = i % cols;
+    const u = cols > 1 ? c / (cols - 1) : 0.5;
+    const v = rows > 1 ? r / (rows - 1) : 0.5;
+    out[i * 3] = (u - 0.5) * w;
+    out[i * 3 + 1] = (0.5 - v) * h;
+    out[i * 3 + 2] = (Math.random() * 2 - 1) * depth;
+  }
+  return out;
+}
+
+/**
+ * Build a particle cloud spelling `lines` as STACKED text — one line above the
+ * next, centered, with tight leading (~0.92 line-height). Each line is
+ * rendered bold Spectral on an offscreen canvas, the opaque pixels are
+ * sampled/resampled to EXACTLY `count` points, and the block is centered and
+ * scaled so its total WIDTH = `worldWidth` (width-driven, unlike
+ * buildNameCloud's height-driven scaling). ±Z slab depth ≈ 0.22 of one line's
+ * height so the letters read as engraved slab, not flat sheet.
+ *
+ * `maxWorldHeight` (optional) caps the scale: if the stacked block would come
+ * out taller than this, the effective width yields so the height lands exactly
+ * at the cap (tall/narrow viewports). Client-only; like the other builders it
+ * NEVER throws — any failure returns a width-scaled fallback grid of exactly
+ * `count` points. Call after `document.fonts.ready`, rebuild on resize.
+ */
+export function buildStackedNameCloud(
+  lines: string[],
+  count: number,
+  worldWidth: number,
+  maxWorldHeight?: number,
+): Float32Array {
+  if (count <= 0) return new Float32Array(0);
+  const safeWidth =
+    Number.isFinite(worldWidth) && worldWidth > 0 ? worldWidth : 1;
+
+  const text = lines.filter((l) => l.trim().length > 0);
+  if (typeof document === "undefined" || text.length === 0) {
+    return fallbackGridWide(count, safeWidth);
+  }
+
+  let canvas: HTMLCanvasElement;
+  let ctx: CanvasRenderingContext2D | null;
+  try {
+    canvas = document.createElement("canvas");
+    ctx = canvas.getContext("2d", { willReadFrequently: true });
+  } catch {
+    return fallbackGridWide(count, safeWidth);
+  }
+  if (!ctx) return fallbackGridWide(count, safeWidth);
+
+  // Render each line at a generous size so glyph edges sample densely.
+  const fontPx = 220;
+  const lineGapPx = fontPx * 0.92; // baseline-to-baseline, tight leading
+  const padX = Math.round(fontPx * 0.4);
+  const padY = Math.round(fontPx * 0.35);
+  const font = `800 ${fontPx}px ${FALLBACK_FONTS}`;
+
+  ctx.font = font;
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "center";
+
+  let maxLineW = 1;
+  let ascent = fontPx * 0.8;
+  let descent = fontPx * 0.2;
+  try {
+    for (const line of text) {
+      const m = ctx.measureText(line);
+      maxLineW = Math.max(maxLineW, Math.ceil(m.width));
+      ascent = Math.max(
+        ascent,
+        (m.actualBoundingBoxAscent as number | undefined) ?? 0,
+      );
+      descent = Math.max(
+        descent,
+        (m.actualBoundingBoxDescent as number | undefined) ?? 0,
+      );
+    }
+  } catch {
+    return fallbackGridWide(count, safeWidth);
+  }
+
+  const blockH = ascent + (text.length - 1) * lineGapPx + descent;
+  const cw = maxLineW + padX * 2;
+  const ch = Math.ceil(blockH) + padY * 2;
+  canvas.width = cw;
+  canvas.height = ch;
+
+  // Re-set context state (resizing the canvas clears it) and draw the stack,
+  // each line centered on the canvas midline.
+  ctx.font = font;
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#ffffff";
+  for (let li = 0; li < text.length; li++) {
+    ctx.fillText(text[li], cw / 2, padY + ascent + li * lineGapPx);
+  }
+
+  let data: Uint8ClampedArray;
+  try {
+    data = ctx.getImageData(0, 0, cw, ch).data;
+  } catch {
+    return fallbackGridWide(count, safeWidth);
+  }
+
+  // Collect opaque pixel coordinates and their bounding box so the scale maps
+  // the ACTUAL inked width (not the padded canvas) onto worldWidth.
+  const alphaThreshold = 128;
+  const px: number[] = [];
+  const py: number[] = [];
+  let minX = cw;
+  let maxX = 0;
+  let minY = ch;
+  let maxY = 0;
+  for (let y = 0; y < ch; y++) {
+    const row = y * cw * 4;
+    for (let x = 0; x < cw; x++) {
+      if (data[row + x * 4 + 3] > alphaThreshold) {
+        px.push(x);
+        py.push(y);
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  const opaque = px.length;
+  if (opaque === 0) {
+    return fallbackGridWide(count, safeWidth);
+  }
+
+  const inkW = Math.max(1, maxX - minX + 1);
+  const inkH = Math.max(1, maxY - minY + 1);
+
+  // Width-driven scale; the optional height cap wins on tall/narrow blocks
+  // (the effective worldWidth yields so block height === maxWorldHeight).
+  let scale = safeWidth / inkW;
+  if (
+    maxWorldHeight !== undefined &&
+    Number.isFinite(maxWorldHeight) &&
+    maxWorldHeight > 0 &&
+    inkH * scale > maxWorldHeight
+  ) {
+    scale = maxWorldHeight / inkH;
+  }
+
+  const depth = 0.22 * lineGapPx * scale; // ±Z ≈ 0.22 of one line's height
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+
+  const out = new Float32Array(count * 3);
+
+  const writePoint = (i: number, sx: number, sy: number, jitter: boolean) => {
+    const jx = jitter ? (Math.random() - 0.5) * 1.5 : 0;
+    const jy = jitter ? (Math.random() - 0.5) * 1.5 : 0;
+    // Canvas Y is top-down; world Y is up. Center on the ink bounding box.
+    out[i * 3] = (sx + jx - cx) * scale;
+    out[i * 3 + 1] = (cy - (sy + jy)) * scale;
+    out[i * 3 + 2] = (Math.random() * 2 - 1) * depth;
+  };
+
+  if (opaque >= count) {
+    const stride = opaque / count;
+    for (let i = 0; i < count; i++) {
+      const idx = Math.min(opaque - 1, Math.floor(i * stride));
+      writePoint(i, px[idx], py[idx], false);
+    }
+  } else {
+    for (let i = 0; i < opaque; i++) {
+      writePoint(i, px[i], py[i], false);
+    }
+    for (let i = opaque; i < count; i++) {
+      const idx = i % opaque;
+      writePoint(i, px[idx], py[idx], true);
+    }
+  }
+
   return out;
 }
 
@@ -68,7 +264,7 @@ export function buildNameCloud(
   const padX = Math.round(fontPx * 0.4);
   const padY = Math.round(fontPx * 0.35);
 
-  ctx.font = `700 ${fontPx}px ${FALLBACK_FONTS}`;
+  ctx.font = `800 ${fontPx}px ${FALLBACK_FONTS}`;
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
 
@@ -93,7 +289,7 @@ export function buildNameCloud(
   canvas.height = ch;
 
   // Re-set context state (resizing the canvas clears it).
-  ctx.font = `700 ${fontPx}px ${FALLBACK_FONTS}`;
+  ctx.font = `800 ${fontPx}px ${FALLBACK_FONTS}`;
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
   ctx.fillStyle = "#ffffff";

@@ -13,7 +13,7 @@ import { useEffect, useRef, type CSSProperties } from "react";
 import { STATES, useScene } from "@/lib/sceneStore";
 
 const MONO =
-  'var(--font-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace';
+  'var(--font-mono), "Spline Sans Mono", ui-monospace, SFMono-Regular, monospace';
 
 /** How long the readout holds full ink after a state change (ms). */
 const FLASH_HOLD_MS = 300;
