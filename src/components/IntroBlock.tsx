@@ -8,7 +8,7 @@ import ContactButtons from "./ContactButtons";
 
 const MONO =
   'var(--font-mono), "Spline Sans Mono", ui-monospace, SFMono-Regular, monospace';
-const DISPLAY = "var(--font-display), Archivo, sans-serif";
+const DISPLAY = "var(--font-display), 'Archivo Black', Archivo, sans-serif";
 
 /** Height the EKG header bar reserves at the top; the monogram centers in it. */
 const BAR_H = 54;
@@ -151,7 +151,7 @@ export default function IntroBlock(): JSX.Element {
             style={{
               display: "inline-flex",
               alignItems: "baseline",
-              gap: "0.42ch",
+              gap: 0,
               fontFamily: DISPLAY,
               fontWeight: 600,
               fontSize: "1.18rem",
@@ -168,6 +168,9 @@ export default function IntroBlock(): JSX.Element {
             }}
           >
             <NamePart initial="M" rest="ounish" expanded={expanded} />
+            <span aria-hidden="true" style={{ margin: "0 0.04em" }}>
+              .
+            </span>
             <NamePart initial="M" rest="avuduru" expanded={expanded} />
           </button>
         </div>

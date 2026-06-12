@@ -35,7 +35,7 @@ import { useScene } from "@/lib/sceneStore";
 
 const MONO =
   'var(--font-mono), "Spline Sans Mono", ui-monospace, SFMono-Regular, monospace';
-const DISPLAY = "var(--font-display), Archivo, sans-serif";
+const DISPLAY = "var(--font-display), 'Archivo Black', Archivo, sans-serif";
 
 const NAME_MAX = 80;
 const MSG_MAX = 1000;

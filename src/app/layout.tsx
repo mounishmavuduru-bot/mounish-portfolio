@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
-import { Archivo, Spline_Sans_Mono } from "next/font/google";
+import { Archivo_Black, Spline_Sans_Mono } from "next/font/google";
 import "./globals.css";
 
-// Display + body face: Archivo, a heavy characterful grotesque — modern
-// clinic × specimen lab. Variable font; we request the weights the site uses
-// (regular body through the heavy display cuts for the full-bleed name).
-const archivo = Archivo({
+// Display face: Archivo Black — the Archivo family's dedicated heavy/black
+// cut. Chunky grotesque for the full-bleed name, section titles, and item
+// names. Single black weight (renders ~900).
+const archivo = Archivo_Black({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  weight: ["400"],
   display: "swap",
 });
 

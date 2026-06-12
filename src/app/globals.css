@@ -32,7 +32,7 @@
   --color-ink-soft: var(--ink-soft);
   --color-oxblood: var(--oxblood);
   --color-sepia: var(--sepia);
-  --font-display: var(--font-display), Archivo, sans-serif;
+  --font-display: var(--font-display), 'Archivo Black', Archivo, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -60,14 +60,14 @@ body {
   background-attachment: fixed;
   color: var(--ink);
   /* Body text is the old-style serif; tiny labels/meta opt into mono. */
-  font-family: var(--font-display), Archivo, sans-serif;
+  font-family: var(--font-display), 'Archivo Black', Archivo, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
 /* Explicit serif display helper (headings, the 3D name DOM mirror, etc.). */
 .font-display {
-  font-family: var(--font-display), Archivo, sans-serif;
+  font-family: var(--font-display), 'Archivo Black', Archivo, sans-serif;
 }
 
 /* Tiny labels and meta use Spline Sans Mono. */
