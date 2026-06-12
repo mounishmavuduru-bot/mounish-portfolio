@@ -1,7 +1,14 @@
 "use client";
 
 import type { JSX } from "react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import gsap from "gsap";
 import {
   projects,
@@ -20,11 +27,17 @@ const DISPLAY = "var(--font-display), Archivo, sans-serif";
 const RADIUS_CARD = "var(--radius-card, 14px)";
 const RADIUS_CTL = "var(--radius-ctl, 8px)";
 
-type Row = { primary: string; meta: string };
+/** `note` (operative note) is present only on rows that expand — projects. */
+type Row = { primary: string; meta: string; note?: string };
 
 function rowsFor(section: Site): Row[] {
   if (section === "projects") {
-    return projects.map((p) => ({ primary: p.name, meta: p.tag }));
+    return projects.map((p) => ({
+      primary: p.name,
+      meta: p.tag,
+      // Read the optional note safely — a project may omit it.
+      note: typeof p.note === "string" ? p.note : undefined,
+    }));
   }
   if (section === "achievements") {
     return awards.map((a) => ({ primary: a.name, meta: a.org }));
@@ -131,6 +144,14 @@ function AnchoredPanel({
   const panelRef = useRef<HTMLElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const closingRef = useRef(false);
+  // Operative-note accordion: index of the single open row, or null. Only rows
+  // that carry a note can be opened; opening one closes the previous (single
+  // expand). This is a click-driven state change — never set inside an effect.
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+  const toggleRow = useCallback((i: number) => {
+    setOpenIndex((cur) => (cur === i ? null : i));
+  }, []);
 
   const rows = rowsFor(section);
   const title = siteLabels[section];
@@ -305,76 +326,220 @@ function AnchoredPanel({
             scrollbarWidth: "thin",
           }}
         >
-          {rows.map((row, i) => (
-            <li
-              key={i}
-              className="panel-row"
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                gap: "12px",
-                padding: "10px 2px",
-                borderTop: i === 0 ? "none" : `1px solid ${HAIRLINE}`,
-                borderRadius: RADIUS_CTL,
-              }}
-            >
-              <span
-                aria-hidden="true"
-                className="font-mono"
-                style={{
-                  fontFamily: MONO,
-                  fontSize: "1.05rem",
-                  lineHeight: 1,
-                  color: "color-mix(in srgb, var(--sepia) 45%, transparent)",
-                  minWidth: "2.2ch",
-                  flexShrink: 0,
-                }}
-              >
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <span
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "4px",
-                  minWidth: 0,
-                }}
-              >
+          {rows.map((row, i) => {
+            const numeral = String(i + 1).padStart(2, "0");
+            const expandable = typeof row.note === "string" && row.note.length > 0;
+            const isOpen = expandable && openIndex === i;
+            const noteId = `panel-note-${section}-${i}`;
+
+            // The numeral + name + meta block, shared by both row variants.
+            const body = (
+              <>
                 <span
-                  className="row-name"
+                  aria-hidden="true"
+                  className="font-mono"
                   style={{
-                    fontFamily: DISPLAY,
-                    fontWeight: 500,
+                    fontFamily: MONO,
                     fontSize: "1.05rem",
-                    lineHeight: 1.3,
-                    color: "var(--ink)",
+                    lineHeight: 1,
+                    color: "color-mix(in srgb, var(--sepia) 45%, transparent)",
+                    minWidth: "2.2ch",
+                    flexShrink: 0,
                   }}
                 >
-                  {row.primary}
+                  {numeral}
                 </span>
-                {row.meta ? (
+                <span
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "4px",
+                    minWidth: 0,
+                    flex: "1 1 auto",
+                  }}
+                >
                   <span
-                    className="font-mono"
+                    className="row-name"
                     style={{
-                      fontFamily: MONO,
-                      fontSize: "0.62rem",
-                      letterSpacing: "0.08em",
+                      fontFamily: DISPLAY,
+                      fontWeight: 500,
+                      fontSize: "1.05rem",
+                      lineHeight: 1.3,
+                      color: "var(--ink)",
+                    }}
+                  >
+                    {row.primary}
+                  </span>
+                  {row.meta ? (
+                    <span
+                      className="font-mono"
+                      style={{
+                        fontFamily: MONO,
+                        fontSize: "0.62rem",
+                        letterSpacing: "0.08em",
+                        color: "var(--sepia)",
+                      }}
+                    >
+                      {row.meta}
+                    </span>
+                  ) : null}
+                </span>
+                {expandable ? (
+                  <span
+                    aria-hidden="true"
+                    className="row-caret"
+                    data-open={isOpen ? "true" : "false"}
+                    style={{
+                      flexShrink: 0,
+                      alignSelf: "center",
+                      display: "inline-flex",
+                      width: "12px",
+                      height: "12px",
                       color: "var(--sepia)",
                     }}
                   >
-                    {row.meta}
+                    {/* drawn chevron — rotates 90deg when open (CSS) */}
+                    <svg
+                      viewBox="0 0 12 12"
+                      width="12"
+                      height="12"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M4.5 2.5 L8 6 L4.5 9.5" />
+                    </svg>
                   </span>
                 ) : null}
-              </span>
-            </li>
-          ))}
+              </>
+            );
+
+            return (
+              <li
+                key={i}
+                style={{
+                  borderTop: i === 0 ? "none" : `1px solid ${HAIRLINE}`,
+                }}
+              >
+                {expandable ? (
+                  <button
+                    type="button"
+                    className="panel-row panel-row-btn"
+                    aria-expanded={isOpen}
+                    aria-controls={noteId}
+                    onClick={() => toggleRow(i)}
+                    style={{
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: "12px",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "10px 2px",
+                      borderRadius: RADIUS_CTL,
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      font: "inherit",
+                      color: "inherit",
+                    }}
+                  >
+                    {body}
+                  </button>
+                ) : (
+                  <div
+                    className="panel-row"
+                    style={{
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: "12px",
+                      padding: "10px 2px",
+                      borderRadius: RADIUS_CTL,
+                    }}
+                  >
+                    {body}
+                  </div>
+                )}
+
+                {expandable ? (
+                  // Accordion reveal: grid-template-rows 0fr→1fr + opacity.
+                  // Transform/opacity/clip only — no height/padding tween. The
+                  // inner wrapper must have min-height:0 + overflow:hidden for
+                  // the 0fr collapse to clip cleanly.
+                  <div
+                    id={noteId}
+                    className="row-note-grid"
+                    data-open={isOpen ? "true" : "false"}
+                    role="region"
+                    aria-hidden={!isOpen}
+                  >
+                    <div className="row-note-clip">
+                      <div className="row-note-inner">
+                        <p
+                          className="font-mono"
+                          style={{
+                            fontFamily: MONO,
+                            fontSize: "0.55rem",
+                            letterSpacing: "0.18em",
+                            textTransform: "uppercase",
+                            color: "var(--sepia)",
+                            margin: "0 0 6px",
+                          }}
+                        >
+                          op-note
+                        </p>
+                        <p
+                          style={{
+                            fontFamily: DISPLAY,
+                            fontWeight: 400,
+                            fontSize: "0.9rem",
+                            lineHeight: 1.5,
+                            color: "var(--ink-soft)",
+                            margin: 0,
+                          }}
+                        >
+                          {row.note}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
         </ol>
       </section>
 
-      {/* hover: name→oxblood, color only, 160ms; close control matches */}
+      {/* hover: name→oxblood, color only, 160ms; close control matches.
+          Accordion: grid-template-rows 0fr→1fr + opacity (clip/opacity only,
+          never height/padding); caret rotates 90deg when its row is open. */}
       <style>{`
         .panel-row .row-name { transition: color 160ms ease; }
-        .panel-row:hover .row-name { color: var(--oxblood); }
+        .panel-row:hover .row-name,
+        .panel-row:focus-visible .row-name { color: var(--oxblood); }
+        .panel-row-btn:focus-visible {
+          outline: 1px solid var(--oxblood);
+          outline-offset: 1px;
+        }
+        .row-caret {
+          transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+          transform: rotate(0deg);
+        }
+        .row-caret[data-open="true"] { transform: rotate(90deg); }
+        .row-note-grid {
+          display: grid;
+          grid-template-rows: 0fr;
+          opacity: 0;
+          transition: grid-template-rows 240ms cubic-bezier(0.22, 1, 0.36, 1),
+            opacity 200ms ease;
+        }
+        .row-note-grid[data-open="true"] {
+          grid-template-rows: 1fr;
+          opacity: 1;
+        }
+        .row-note-clip { min-height: 0; overflow: hidden; }
+        .row-note-inner { padding: 2px 2px 12px 2px; }
         .panel-close {
           transition: color 160ms linear, border-color 160ms linear;
         }
@@ -389,7 +554,9 @@ function AnchoredPanel({
         }
         @media (prefers-reduced-motion: reduce) {
           .panel-row .row-name,
-          .panel-close { transition: none; }
+          .panel-close,
+          .row-caret,
+          .row-note-grid { transition: none; }
         }
       `}</style>
     </div>

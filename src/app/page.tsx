@@ -10,6 +10,8 @@ import SectionPanel from "@/components/SectionPanel";
 import ContactForm from "@/components/ContactForm";
 import Chart from "@/components/Chart";
 import StateReadout from "@/components/StateReadout";
+import PulseButton from "@/components/PulseButton";
+import SoundToggle from "@/components/SoundToggle";
 import { sceneActions, type PulseState } from "@/lib/sceneStore";
 
 // The particle scene owns the R3F <Canvas> and must never render on the
@@ -62,6 +64,10 @@ export default function Home() {
       <Chart />
       {/* Quiet mono micro-readout of the live scene state, bottom-right. */}
       <StateReadout />
+      {/* One-click pulse, fixed bottom-center between chart + state readout. */}
+      <PulseButton />
+      {/* Heartbeat audio toggle, top-right below the EKG strip. */}
+      <SoundToggle />
     </div>
   );
 }

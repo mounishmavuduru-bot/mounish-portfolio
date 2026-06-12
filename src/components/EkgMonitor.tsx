@@ -2,7 +2,7 @@
 
 import type { JSX } from "react";
 import { useEffect, useRef, useState } from "react";
-import { pointer, subscribeEkg, ui, type EkgEvent } from "@/lib/sceneStore";
+import { pointer, subscribeEkg, ui, vitals, type EkgEvent } from "@/lib/sceneStore";
 
 // ---------------------------------------------------------------------------
 // Atlas rhythm-strip HEADER BAR.
@@ -176,6 +176,11 @@ export default function EkgMonitor(): JSX.Element {
         else tachyUntil = -1;
       }
       hr += (hrTarget - hr) * Math.min(1, dt * 2.2);
+
+      // publish the eased live HR to the non-reactive vitals channel so other
+      // rAF consumers (SoundToggle's playbackRate) stay in lock-step with the
+      // trace. One plain assignment — never schedules a React render.
+      vitals.hr = hr;
 
       // advance the waveform by the live HR (cycles/sec = hr/60). During a
       // flatline the phase still advances (so revival timing is honest) but the

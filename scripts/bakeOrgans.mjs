@@ -14,6 +14,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 
 const COUNT = 42000;
+
+// Per-organ orientation fix applied to each sampled point BEFORE centering/
+// scaling, so each organ sits anatomically upright (superior → +Y, anterior
+// roughly → +Z) and spins correctly around the vertical axis.
+//   - heart, liver: authored upright already → identity.
+//   - brain: native model has superior–inferior along Z (it lies on its side);
+//     cyclic remap (x,y,z)→(y,z,x) is a proper rotation (det +1, no mirror)
+//     that puts SI on +Y, the hemispheres split across X, and AP on Z.
+const ORIENT = {
+  brain: (x, y, z) => [y, z, x],
+};
+
 const ORGANS = [
   { id: "heart", src: "assets/stl/heart.stl" },
   { id: "brain", src: "assets/stl/brain.stl" },
@@ -50,6 +62,7 @@ function parseBinarySTL(buf) {
 }
 
 function bake(id, srcRel) {
+  const orient = ORIENT[id];
   const buf = readFileSync(join(ROOT, srcRel));
   const { verts, triCount } = parseBinarySTL(buf);
 
@@ -94,9 +107,10 @@ function bake(id, srcRel) {
     let u = rand(), v = rand();
     if (u + v > 1) { u = 1 - u; v = 1 - v; }
     const w = 1 - u - v;
-    const x = w * verts[b] + u * verts[b + 3] + v * verts[b + 6];
-    const y = w * verts[b + 1] + u * verts[b + 4] + v * verts[b + 7];
-    const z = w * verts[b + 2] + u * verts[b + 5] + v * verts[b + 8];
+    let x = w * verts[b] + u * verts[b + 3] + v * verts[b + 6];
+    let y = w * verts[b + 1] + u * verts[b + 4] + v * verts[b + 7];
+    let z = w * verts[b + 2] + u * verts[b + 5] + v * verts[b + 8];
+    if (orient) [x, y, z] = orient(x, y, z);
     pts[i * 3] = x; pts[i * 3 + 1] = y; pts[i * 3 + 2] = z;
     if (x < minX) minX = x; if (x > maxX) maxX = x;
     if (y < minY) minY = y; if (y > maxY) maxY = y;

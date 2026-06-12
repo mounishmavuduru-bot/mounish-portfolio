@@ -251,6 +251,25 @@ export const ui: { monogramExpanded: boolean } = {
 };
 
 // ---------------------------------------------------------------------------
+// Non-reactive vitals channel
+// ---------------------------------------------------------------------------
+
+/**
+ * Mutable vitals channel — same non-reactive pattern as `pointer` / `ui`:
+ * written by EkgMonitor every frame (the eased live HR actually driving the
+ * waveform), read inside rAF loops by consumers that must stay in lock-step
+ * with the on-screen rhythm. Mutating `hr` MUST NOT schedule a React render;
+ * do not wrap this in state.
+ *
+ *  hr — current eased heart rate in bpm (the same value EkgMonitor advances the
+ *       waveform with). SoundToggle reads this per frame to set the heartbeat
+ *       audio's playbackRate so the thud stays in time with the trace.
+ */
+export const vitals: { hr: number } = {
+  hr: 64,
+};
+
+// ---------------------------------------------------------------------------
 // Non-reactive EKG effect channel
 // ---------------------------------------------------------------------------
 
