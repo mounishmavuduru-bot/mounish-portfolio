@@ -16,7 +16,7 @@
  * on resize if the world scale changes.
  */
 
-const FALLBACK_FONTS = "'Archivo Black', Archivo, Helvetica, Arial, sans-serif";
+const FALLBACK_FONTS = "'Archivo', Helvetica, Arial, sans-serif";
 
 /** Build a centered count×3 grid roughly worldHeight tall — used as fallback. */
 function fallbackGrid(count: number, worldHeight: number): Float32Array {
@@ -110,7 +110,7 @@ export function buildStackedNameCloud(
   const lineGapPx = fontPx * 0.92; // baseline-to-baseline, tight leading
   const padX = Math.round(fontPx * 0.4);
   const padY = Math.round(fontPx * 0.35);
-  const font = `400 ${fontPx}px ${FALLBACK_FONTS}`;
+  const font = `800 ${fontPx}px ${FALLBACK_FONTS}`;
 
   ctx.font = font;
   ctx.textBaseline = "alphabetic";
@@ -264,7 +264,7 @@ export function buildNameCloud(
   const padX = Math.round(fontPx * 0.4);
   const padY = Math.round(fontPx * 0.35);
 
-  ctx.font = `400 ${fontPx}px ${FALLBACK_FONTS}`;
+  ctx.font = `800 ${fontPx}px ${FALLBACK_FONTS}`;
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
 
@@ -289,7 +289,7 @@ export function buildNameCloud(
   canvas.height = ch;
 
   // Re-set context state (resizing the canvas clears it).
-  ctx.font = `400 ${fontPx}px ${FALLBACK_FONTS}`;
+  ctx.font = `800 ${fontPx}px ${FALLBACK_FONTS}`;
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
   ctx.fillStyle = "#ffffff";

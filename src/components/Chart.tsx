@@ -44,7 +44,7 @@ import {
 
 const MONO =
   'var(--font-mono), "Spline Sans Mono", ui-monospace, SFMono-Regular, monospace';
-const DISPLAY = "var(--font-display), 'Archivo Black', Archivo, sans-serif";
+const DISPLAY = "var(--font-display), Archivo, sans-serif";
 
 const CLEAR_SENTINEL = "::clear::";
 

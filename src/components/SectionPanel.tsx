@@ -23,7 +23,7 @@ const BG = "var(--paper-2)";
 const HAIRLINE = "var(--line)";
 const MONO =
   'var(--font-mono), "Spline Sans Mono", ui-monospace, SFMono-Regular, monospace';
-const DISPLAY = "var(--font-display), 'Archivo Black', Archivo, sans-serif";
+const DISPLAY = "var(--font-display), Archivo, sans-serif";
 const RADIUS_CARD = "var(--radius-card, 14px)";
 const RADIUS_CTL = "var(--radius-ctl, 8px)";
 

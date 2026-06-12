@@ -8,7 +8,7 @@ import ContactButtons from "./ContactButtons";
 
 const MONO =
   'var(--font-mono), "Spline Sans Mono", ui-monospace, SFMono-Regular, monospace';
-const DISPLAY = "var(--font-display), 'Archivo Black', Archivo, sans-serif";
+const DISPLAY = "var(--font-display), Archivo, sans-serif";
 
 /** Height the EKG header bar reserves at the top; the monogram centers in it. */
 const BAR_H = 54;
